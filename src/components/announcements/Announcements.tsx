@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { today } from '../../lib/dates';
 import { emptyFilters, type Filters } from '../../lib/records';
-import { sampleData } from '../../lib/sample';
 import type { useCommunications } from '../../lib/store';
 import type { Communication, CommunicationInput } from '../../lib/types';
 import { Calendar } from './Calendar';
@@ -23,7 +22,7 @@ function uniqueSorted(values: string[]): string[] {
 
 /** Outgoing communications: newsletters, client notices, bulk notifications. */
 export function Announcements({ store, onFlash }: Props) {
-  const { items, add, update, remove, replaceAll } = store;
+  const { items, add, update, remove } = store;
   const [view, setView] = useState<SubView>('overview');
   const [filters, setFilters] = useState<Filters>(emptyFilters);
   const [editing, setEditing] = useState<Editing>(null);
@@ -74,9 +73,6 @@ export function Announcements({ store, onFlash }: Props) {
           <div className="welcome-actions">
             <button type="button" className="btn btn-primary" onClick={() => setEditing({ record: null })}>
               Log your first announcement
-            </button>
-            <button type="button" className="btn" onClick={() => replaceAll(sampleData())}>
-              Load sample data
             </button>
           </div>
         </div>

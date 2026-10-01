@@ -1289,6 +1289,34 @@ textarea {
   }
 }
 
+/* ---------- Sign-in ---------- */
+
+.centered {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.centered-card {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 12px;
+}
+
+.centered-card h1 {
+  font-size: 1.4rem;
+}
+
+.centered-card p {
+  margin: 0;
+}
+
+.signin {
+  display: grid;
+  gap: 12px;
+}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 1000px) {

@@ -1,37 +1,64 @@
-import { useCallback } from 'react';
-import { usePersistentState } from '../persist';
+import { useCallback, useEffect, useState } from 'react';
+import { supabase } from '../supabase';
+import { useSyncedTable } from '../sync';
 import { createContact, newId, type NewContactInput } from './contacts';
+import { clientMapping, contactMapping, teamMapping } from './rows';
 import { defaultSla } from './sla';
-import type { Client, ClientContact, SlaSettings, TeamMember } from './types';
+import type { Client, ClientContact, SlaSettings } from './types';
 
-const KEYS = {
-  contacts: 'portal-tracker:contacts:v1',
-  clients: 'portal-tracker:clients:v1',
-  team: 'portal-tracker:team:v1',
-  sla: 'portal-tracker:sla:v1',
-  me: 'portal-tracker:me',
-};
+/** The single-row escalation matrix, kept live. */
+function useSla(enabled: boolean) {
+  const [sla, setLocal] = useState<SlaSettings>(defaultSla);
+  const [error, setError] = useState('');
 
-/** Starting team from the planning discussion; edit in Settings. */
-function initialTeam(): TeamMember[] {
-  return [
-    { id: 'tm_van', name: 'Van', email: '', phone: '', escalation: false },
-    { id: 'tm_reid', name: 'Reid', email: '', phone: '', escalation: true },
-    { id: 'tm_chris', name: 'Chris', email: '', phone: '', escalation: true },
-    { id: 'tm_aly', name: 'Aly', email: '', phone: '', escalation: false },
-  ];
+  useEffect(() => {
+    if (!enabled) return;
+    const load = async () => {
+      const { data, error: err } = await supabase.from('settings').select('sla').eq('id', 1).maybeSingle();
+      if (err) setError(err.message);
+      else if (data) setLocal({ ...defaultSla, ...(data.sla as SlaSettings) });
+    };
+    void load();
+    const channel = supabase
+      .channel('sync:settings')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, (p) => {
+        const row = p.new as { sla?: SlaSettings };
+        if (row?.sla) setLocal({ ...defaultSla, ...row.sla });
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [enabled]);
+
+  const setSla = useCallback(async (next: SlaSettings) => {
+    setLocal(next);
+    const { error: err } = await supabase
+      .from('settings')
+      .upsert({ id: 1, sla: next, updated_at: new Date().toISOString() });
+    setError(err ? `Could not save the matrix: ${err.message}` : '');
+  }, []);
+
+  return { sla, setSla, error };
 }
 
-export function useTracker() {
-  const [contacts, setContacts, e1] = usePersistentState<ClientContact[]>(KEYS.contacts, () => []);
-  const [clients, setClients, e2] = usePersistentState<Client[]>(KEYS.clients, () => []);
-  const [team, setTeam, e3] = usePersistentState<TeamMember[]>(KEYS.team, initialTeam);
-  const [sla, setSla, e4] = usePersistentState<SlaSettings>(KEYS.sla, () => ({
-    ...defaultSla,
-    defaultAssigneeId: 'tm_van',
-  }));
-  /** Who is using this browser. Stands in for a login until the portal has one. */
-  const [meId, setMeId] = usePersistentState<string>(KEYS.me, () => '');
+/** All tracker data, shared by everyone on the team. `email` is the signed-in user's address. */
+export function useTracker(email: string) {
+  const enabled = Boolean(email);
+  const clientsT = useSyncedTable(clientMapping, enabled);
+  const contactsT = useSyncedTable(contactMapping, enabled, clientsT.flush);
+  const teamT = useSyncedTable(teamMapping, enabled);
+  const slaT = useSla(enabled);
+
+  const contacts = contactsT.items;
+  const clients = clientsT.items;
+  const team = teamT.items;
+  const sla = slaT.sla;
+  const setContacts = contactsT.setItems;
+  const setClients = clientsT.setItems;
+  const setTeam = teamT.setItems;
+  const setSla = slaT.setSla;
+  const meId = team.find((t) => t.email && t.email.toLowerCase() === email.toLowerCase())?.id ?? '';
 
   const addContact = useCallback(
     (input: NewContactInput) => {
@@ -82,7 +109,6 @@ export function useTracker() {
     team,
     sla,
     meId,
-    setMeId,
     setTeam,
     setSla,
     setContacts,
@@ -93,7 +119,8 @@ export function useTracker() {
     addClient,
     updateClient,
     deleteClient,
-    saveError: e1 || e2 || e3 || e4,
+    loading: contactsT.loading || clientsT.loading || teamT.loading,
+    error: contactsT.error || clientsT.error || teamT.error || slaT.error,
   };
 }
 

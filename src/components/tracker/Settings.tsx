@@ -1,6 +1,4 @@
-import { useRef, useState } from 'react';
-import { parseBackup } from '../../lib/records';
-import type { useCommunications } from '../../lib/store';
+import { useEffect, useState } from 'react';
 import { newId } from '../../lib/tracker/contacts';
 import type { Tracker } from '../../lib/tracker/store';
 import type { SlaSettings, TeamMember } from '../../lib/tracker/types';
@@ -9,12 +7,11 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 interface Props {
   tracker: Tracker;
-  announcements: ReturnType<typeof useCommunications>;
   onFlash: (msg: string) => void;
 }
 
-export function Settings({ tracker, announcements, onFlash }: Props) {
-  const { team, setTeam, sla, setSla, meId, setMeId } = tracker;
+export function Settings({ tracker, onFlash }: Props) {
+  const { team, setTeam, sla, setSla } = tracker;
   const [draft, setDraft] = useState<SlaSettings>(sla);
   const slaDirty = JSON.stringify(draft) !== JSON.stringify(sla);
 
@@ -23,18 +20,6 @@ export function Settings({ tracker, announcements, onFlash }: Props) {
 
   return (
     <div className="settings">
-      <section className="panel">
-        <h2>Who is using this browser?</h2>
-        <p className="muted">Recorded on every assignment, response and escalation you make.</p>
-        <select value={meId} onChange={(e) => setMeId(e.target.value)} aria-label="Acting as">
-          <option value="">Choose your name</option>
-          {team.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-      </section>
 
       <section className="panel">
         <h2>Escalation matrix (SLA)</h2>
@@ -153,7 +138,7 @@ export function Settings({ tracker, announcements, onFlash }: Props) {
             className="btn btn-primary"
             disabled={!slaDirty}
             onClick={() => {
-              setSla(draft);
+              void setSla(draft);
               onFlash('Escalation matrix saved.');
             }}
           >
@@ -169,7 +154,10 @@ export function Settings({ tracker, announcements, onFlash }: Props) {
 
       <section className="panel">
         <h2>Team</h2>
-        <p className="muted">People who can be assigned contacts. Tick “Escalations” for whoever gets notified.</p>
+        <p className="muted">
+          People who can be assigned contacts. <strong>Anyone with an email here can sign in</strong> and see every
+          client; clear or remove an email to take access away. Tick “Escalations” for whoever gets notified.
+        </p>
         <div className="table-wrap">
           <table className="table team-table">
             <thead>
@@ -187,24 +175,28 @@ export function Settings({ tracker, announcements, onFlash }: Props) {
               {team.map((t) => (
                 <tr key={t.id}>
                   <td>
-                    <input aria-label="Name" value={t.name} onChange={(e) => setMember(t.id, { name: e.target.value })} />
+                    <BlurInput label="Name" value={t.name} onCommit={(v) => (v.trim() ? setMember(t.id, { name: v.trim() }) : false)} />
                   </td>
                   <td>
-                    <input
-                      aria-label={`${t.name} email`}
+                    <BlurInput
+                      label={`${t.name} email`}
                       type="email"
                       value={t.email}
                       placeholder="name@company.com"
-                      onChange={(e) => setMember(t.id, { email: e.target.value })}
+                      disabled={t.id === tracker.meId}
+                      title={t.id === tracker.meId ? 'You can’t change your own sign-in email here.' : undefined}
+                      onCommit={(v) => {
+                        const email = v.trim().toLowerCase();
+                        if (email && team.some((x) => x.id !== t.id && x.email.toLowerCase() === email)) {
+                          alert('Another team member already uses that email.');
+                          return false;
+                        }
+                        setMember(t.id, { email });
+                      }}
                     />
                   </td>
                   <td>
-                    <input
-                      aria-label={`${t.name} phone`}
-                      type="tel"
-                      value={t.phone}
-                      onChange={(e) => setMember(t.id, { phone: e.target.value })}
-                    />
+                    <BlurInput label={`${t.name} phone`} type="tel" value={t.phone} onCommit={(v) => setMember(t.id, { phone: v.trim() })} />
                   </td>
                   <td>
                     <input
@@ -218,13 +210,14 @@ export function Settings({ tracker, announcements, onFlash }: Props) {
                     <button
                       type="button"
                       className="btn btn-small btn-ghost"
+                      disabled={t.id === tracker.meId}
+                      title={t.id === tracker.meId ? 'You can’t remove yourself.' : undefined}
                       onClick={() => {
                         const open = tracker.contacts.filter((c) => c.assigneeId === t.id && c.status !== 'Resolved').length;
                         const msg = open
-                          ? `Remove ${t.name}? Their ${open} open contacts will become unassigned.`
-                          : `Remove ${t.name}?`;
+                          ? `Remove ${t.name}? They lose access, and their ${open} open contacts become unassigned.`
+                          : `Remove ${t.name}? They lose access to the tracker.`;
                         if (!confirm(msg)) return;
-                        tracker.setContacts((prev) => prev.map((c) => (c.assigneeId === t.id ? { ...c, assigneeId: '' } : c)));
                         setTeam((prev) => prev.filter((x) => x.id !== t.id));
                       }}
                     >
@@ -247,75 +240,52 @@ export function Settings({ tracker, announcements, onFlash }: Props) {
         </div>
       </section>
 
-      <DataPanel tracker={tracker} announcements={announcements} onFlash={onFlash} />
     </div>
   );
 }
 
-/** Temporary safety net while data lives in the browser; removed once the portal has a shared database. */
-function DataPanel({ tracker, announcements, onFlash }: Props) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const download = () => {
-    const data = {
-      exportedAt: new Date().toISOString(),
-      contacts: tracker.contacts,
-      clients: tracker.clients,
-      team: tracker.team,
-      sla: tracker.sla,
-      communications: announcements.items,
-    };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `portal-tracker-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const restore = async (file: File) => {
-    try {
-      const data = JSON.parse(await file.text());
-      if (!Array.isArray(data.contacts) || !Array.isArray(data.clients) || !Array.isArray(data.team) || !data.sla) {
-        throw new Error('This is not a tracker backup file.');
-      }
-      if (!confirm(`Replace everything in this browser with the backup (${data.contacts.length} contacts, ${data.clients.length} clients)?`)) return;
-      tracker.setContacts(data.contacts);
-      tracker.setClients(data.clients);
-      tracker.setTeam(data.team);
-      tracker.setSla(data.sla);
-      if (Array.isArray(data.communications)) announcements.replaceAll(parseBackup(JSON.stringify(data.communications)));
-      onFlash('Backup restored.');
-    } catch (err) {
-      alert(`Could not restore: ${(err as Error).message}`);
-    }
-  };
+/** Text input that saves when you leave the field, so live updates don't fight your typing. */
+function BlurInput({
+  label,
+  value,
+  onCommit,
+  type = 'text',
+  placeholder,
+  disabled,
+  title,
+}: {
+  label: string;
+  value: string;
+  /** Return false to reject the edit and restore the saved value. */
+  onCommit: (v: string) => void | boolean;
+  type?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  title?: string;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (!focused) setDraft(value);
+  }, [value, focused]);
 
   return (
-    <section className="panel">
-      <h2>Backup</h2>
-      <p className="muted">
-        Until the portal is connected to its shared database, everything here is stored in this browser only. Download a
-        backup at the end of each day; it can also move the data to another computer.
-      </p>
-      <div className="row-actions">
-        <button type="button" className="btn" onClick={download}>
-          Download backup
-        </button>
-        <button type="button" className="btn" onClick={() => fileRef.current?.click()}>
-          Restore backup…
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".json,application/json"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void restore(f);
-            e.target.value = '';
-          }}
-        />
-      </div>
-    </section>
+    <input
+      aria-label={label}
+      type={type}
+      value={draft}
+      placeholder={placeholder}
+      disabled={disabled}
+      title={title}
+      onFocus={() => setFocused(true)}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+      }}
+      onBlur={() => {
+        setFocused(false);
+        if (draft !== value && onCommit(draft) === false) setDraft(value);
+      }}
+    />
   );
 }

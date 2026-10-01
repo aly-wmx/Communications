@@ -24,40 +24,68 @@ website updates, memos, SMS, events and print.
 
 ## Where the data lives
 
-Records are saved in the browser's local storage on the computer being used —
-there is no server or login. That means:
+Everything is stored in the **WMX Client Communications** Supabase project and
+updates live for everyone who has it open.
 
-- Data stays on that one browser profile. Use **Import / export → Download
-  backup** regularly, and to move the log to another machine.
-- Clearing browser data deletes the records.
+- **Sign-in:** email link, no passwords. Only people listed under
+  Settings → Team (by email) can see or change anything; this is enforced in the
+  database with row-level security, not just in the app.
+- **GoHighLevel:** `POST /api/ghl/webhook?secret=…` (see below) adds incoming
+  texts and calls to the queue, and marks them responded when the team replies
+  through GHL.
 
-If several people need to share one live log, the storage layer
-(`src/lib/store.ts`) is the single place to swap in a hosted database.
+### Environment variables (Vercel → Project → Settings → Environment Variables)
+
+| Name | Where it's used | Value |
+|---|---|---|
+| `VITE_SUPABASE_URL` | browser | `https://eloznbkkmkdfgjajambo.supabase.co` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | browser | Supabase → Project Settings → API Keys → publishable key |
+| `SUPABASE_URL` | webhook | same as above |
+| `SUPABASE_SERVICE_ROLE_KEY` | webhook only | Supabase → Project Settings → API Keys → secret key. Never prefix with `VITE_`. |
+| `GHL_WEBHOOK_SECRET` | webhook only | a long random string; also goes in the GHL webhook URL |
+
+### GoHighLevel setup
+
+In GHL: **Automation → Workflows → Create workflow**.
+
+1. Trigger **Customer Replied** (inbound texts, emails, chats) and/or **Call Status** (calls, missed calls).
+2. Action **Webhook**, URL `https://<your-app>/api/ghl/webhook?secret=<GHL_WEBHOOK_SECRET>`.
+3. Optional **Custom Data** on the action:
+   - `event`: `inbound` (default), `outbound`, `call`, `missed_call` or `voicemail`
+   - `message`: the message text, if GHL's default field is empty for that trigger
+
+A separate workflow that fires when your team sends a message, with `event = outbound`,
+marks that client's waiting contacts as responded.
+
+Open `https://<your-app>/api/ghl/webhook?secret=…` in a browser to check the URL:
+it shows `{"ok":true}` when the secret is right.
 
 ## Running it
 
-Requires Node.js 20+.
+Requires Node.js 20+. Copy `.env.example` to `.env.local` and fill in the browser values.
 
 ```bash
 npm install
-npm run dev       # local development server
+npm run dev       # local development server (the /api webhook runs on Vercel)
 npm test          # unit tests
 npm run build     # production build into dist/
 ```
 
-`dist/` is a static site (relative paths), so it can be hosted on any static
-host — GitHub Pages, Netlify, Vercel, or an internal web server.
+Deployed on Vercel: the Vite site plus the `api/` serverless function.
 
 ## Project layout
 
 ```
+api/ghl/webhook.ts        GoHighLevel → queue (Vercel function)
 src/
-  App.tsx                 views, navigation, import/export
-  components/             Dashboard, CommList, Calendar, CommForm, Badges
-  lib/types.ts            record shape, channels, statuses, priorities
-  lib/records.ts          create/update, filters, sorting, stats, CSV, backup parsing
-  lib/store.ts            localStorage persistence hook
-  lib/sample.ts           sample data for a first look
+  App.tsx                 sections and navigation
+  components/AuthGate.tsx email sign-in and team-list check
+  components/tracker/     client queue, clients, escalation, settings
+  components/announcements/ outgoing announcements
+  lib/tracker/            SLA engine, queue logic, database row mapping
+  lib/sync.ts             live two-way sync of a table with Supabase
+  lib/ghl.ts              GHL payload parsing
 ```
 
-To change the list of channels or statuses, edit `src/lib/types.ts`.
+To change the channels or statuses, edit `src/lib/tracker/types.ts` and the
+matching `check` constraints in the database.

@@ -6,18 +6,22 @@ import { EscalateDialog } from './components/tracker/EscalateDialog';
 import { LogContact } from './components/tracker/LogContact';
 import { Queue } from './components/tracker/Queue';
 import { Settings } from './components/tracker/Settings';
-import { useNow } from './lib/persist';
+import { useNow } from './lib/time';
+import { AuthGate } from './components/AuthGate';
 import { useCommunications } from './lib/store';
 import { assign, markResponded, queueStats } from './lib/tracker/contacts';
-import { trackerSample } from './lib/tracker/sample';
 import { useTracker } from './lib/tracker/store';
 import type { ClientContact } from './lib/tracker/types';
 
 type View = 'queue' | 'clients' | 'announcements' | 'settings';
 
 export default function App() {
-  const tracker = useTracker();
-  const announcements = useCommunications();
+  return <AuthGate>{(email, signOut) => <Portal email={email} signOut={signOut} />}</AuthGate>;
+}
+
+function Portal({ email, signOut }: { email: string; signOut: () => void }) {
+  const tracker = useTracker(email);
+  const announcements = useCommunications(true);
   const now = useNow();
   const [view, setView] = useState<View>('queue');
   const [clientFilter, setClientFilter] = useState('');
@@ -74,17 +78,12 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <label className="acting-as">
-          <span className="muted">You are</span>
-          <select value={meId} onChange={(e) => tracker.setMeId(e.target.value)} className={!me ? 'needs-attention' : ''}>
-            <option value="">Choose…</option>
-            {team.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="acting-as">
+          <span className="muted">{me?.name ?? email}</span>
+          <button type="button" className="btn btn-small btn-ghost" onClick={signOut}>
+            Sign out
+          </button>
+        </div>
         {(view === 'queue' || view === 'clients') && (
           <button type="button" className="btn btn-primary" onClick={() => setLogging({})}>
             + Log client contact
@@ -92,9 +91,9 @@ export default function App() {
         )}
       </header>
 
-      {(tracker.saveError || announcements.saveError) && (
+      {(tracker.error || announcements.error) && (
         <div className="alert" role="alert">
-          Changes could not be saved in this browser (storage is full or blocked). Download a backup from Settings now.
+          {tracker.error || announcements.error}
         </div>
       )}
       {notice && (
@@ -105,7 +104,9 @@ export default function App() {
 
       <main className="content">
         {view === 'queue' &&
-          (contacts.length === 0 ? (
+          (tracker.loading ? (
+            <p className="empty">Loading…</p>
+          ) : contacts.length === 0 ? (
             <div className="welcome">
               <h1>Every client waiting on a response, in one place</h1>
               <p>
@@ -115,17 +116,6 @@ export default function App() {
               <div className="welcome-actions">
                 <button type="button" className="btn btn-primary" onClick={() => setLogging({})}>
                   Log a client contact
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    const s = trackerSample(team);
-                    tracker.setClients((prev) => [...prev, ...s.clients]);
-                    tracker.setContacts(s.contacts);
-                  }}
-                >
-                  Load sample data
                 </button>
               </div>
             </div>
@@ -157,7 +147,7 @@ export default function App() {
           />
         )}
         {view === 'announcements' && <Announcements store={announcements} onFlash={flash} />}
-        {view === 'settings' && <Settings tracker={tracker} announcements={announcements} onFlash={flash} />}
+        {view === 'settings' && <Settings tracker={tracker} onFlash={flash} />}
       </main>
 
       {logging && (
