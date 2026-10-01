@@ -6,3 +6,5 @@ dist
 .env.local
 .env*.local
 .vercel
+.next
+next-env.d.ts
