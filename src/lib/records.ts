@@ -193,38 +193,6 @@ export function computeStats(list: Communication[], on = today()): Stats {
 
 // ---------- Import / export ----------
 
-const CSV_COLUMNS: Array<[keyof Communication, string]> = [
-  ['title', 'Title'],
-  ['channel', 'Channel'],
-  ['status', 'Status'],
-  ['priority', 'Priority'],
-  ['audience', 'Audience'],
-  ['owner', 'Owner'],
-  ['requestedBy', 'Requested by'],
-  ['scheduledDate', 'Scheduled date'],
-  ['sentDate', 'Sent date'],
-  ['reach', 'Reach'],
-  ['link', 'Link'],
-  ['tags', 'Tags'],
-  ['summary', 'Summary'],
-  ['notes', 'Notes'],
-  ['createdAt', 'Created'],
-  ['updatedAt', 'Last updated'],
-];
-
-function csvCell(v: unknown): string {
-  let s = Array.isArray(v) ? v.join(', ') : v == null ? '' : String(v);
-  // Neutralise spreadsheet formula injection.
-  if (/^[=+\-@]/.test(s)) s = `'${s}`;
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-export function toCsv(list: Communication[]): string {
-  const header = CSV_COLUMNS.map(([, label]) => csvCell(label)).join(',');
-  const rows = list.map((c) => CSV_COLUMNS.map(([k]) => csvCell(c[k])).join(','));
-  return [header, ...rows].join('\r\n');
-}
-
 /** Validate and coerce records from a JSON backup. Throws on malformed input. */
 export function parseBackup(text: string): Communication[] {
   const data: unknown = JSON.parse(text);

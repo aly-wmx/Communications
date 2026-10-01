@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { formatTimestamp } from '../lib/dates';
+import { formatTimestamp } from '../../lib/dates';
 import {
   CHANNELS,
   PRIORITIES,
@@ -7,7 +7,7 @@ import {
   emptyInput,
   type Communication,
   type CommunicationInput,
-} from '../lib/types';
+} from '../../lib/types';
 
 interface Props {
   record: Communication | null;

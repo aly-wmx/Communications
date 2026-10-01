@@ -1,4 +1,4 @@
-import type { Priority, Status } from '../lib/types';
+import type { Priority, Status } from '../../lib/types';
 
 const statusClass: Record<Status, string> = {
   Draft: 'neutral',

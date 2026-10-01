@@ -6,7 +6,6 @@ import {
   emptyFilters,
   isOverdue,
   parseBackup,
-  toCsv,
   updateRecord,
 } from './records';
 import { emptyInput, type CommunicationInput } from './types';
@@ -91,14 +90,7 @@ describe('computeStats', () => {
   });
 });
 
-describe('import / export', () => {
-  it('escapes CSV and neutralises formulas', () => {
-    const csv = toCsv([createRecord(input({ title: '=HYPERLINK("x")', notes: 'a, b' }))]);
-    const row = csv.split('\r\n')[1];
-    expect(row.startsWith(`"'=HYPERLINK(""x"")"`)).toBe(true);
-    expect(row).toContain('"a, b"');
-  });
-
+describe('backup', () => {
   it('round-trips a backup and coerces unknown values', () => {
     const r = createRecord(input());
     const back = parseBackup(JSON.stringify({ communications: [r, { title: 'X', channel: 'Fax' }] }));

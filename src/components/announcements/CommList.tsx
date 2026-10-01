@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { formatDate } from '../lib/dates';
+import { formatDate } from '../../lib/dates';
 import {
   applyFilters,
   emptyFilters,
@@ -7,8 +7,8 @@ import {
   sortRecords,
   type Filters,
   type SortKey,
-} from '../lib/records';
-import { CHANNELS, STATUSES, type Communication } from '../lib/types';
+} from '../../lib/records';
+import { CHANNELS, STATUSES, type Communication } from '../../lib/types';
 import { OverdueTag, PriorityTag, StatusBadge } from './Badges';
 
 interface Props {
@@ -18,7 +18,6 @@ interface Props {
   owners: string[];
   onOpen: (c: Communication) => void;
   onQuickStatus: (c: Communication, status: Communication['status']) => void;
-  onExport: (list: Communication[]) => void;
 }
 
 const COLUMNS: Array<[SortKey, string]> = [
@@ -28,7 +27,7 @@ const COLUMNS: Array<[SortKey, string]> = [
   ['status', 'Status'],
 ];
 
-export function CommList({ items, filters, setFilters, owners, onOpen, onQuickStatus, onExport }: Props) {
+export function CommList({ items, filters, setFilters, owners, onOpen, onQuickStatus }: Props) {
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'date', desc: true });
   const rows = useMemo(
     () => sortRecords(applyFilters(items, filters), sort.key, sort.desc),
@@ -91,9 +90,6 @@ export function CommList({ items, filters, setFilters, owners, onOpen, onQuickSt
         <span className="muted">
           {rows.length} of {items.length} communications
         </span>
-        <button type="button" className="btn btn-small" onClick={() => onExport(rows)} disabled={!rows.length}>
-          Export these to CSV
-        </button>
       </div>
 
       {rows.length === 0 ? (

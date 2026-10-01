@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { toDateKey, today } from '../lib/dates';
-import { effectiveDate, isOverdue } from '../lib/records';
-import type { Communication } from '../lib/types';
+import { toDateKey, today } from '../../lib/dates';
+import { effectiveDate, isOverdue } from '../../lib/records';
+import type { Communication } from '../../lib/types';
 
 interface Props {
   items: Communication[];

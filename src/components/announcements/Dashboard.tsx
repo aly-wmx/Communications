@@ -1,7 +1,8 @@
-import { addDays, formatDate, parseDateKey, today } from '../lib/dates';
-import { computeStats, isOverdue, sortRecords, type Filters } from '../lib/records';
-import type { Communication } from '../lib/types';
+import { addDays, formatDate, parseDateKey, today } from '../../lib/dates';
+import { computeStats, isOverdue, sortRecords, type Filters } from '../../lib/records';
+import type { Communication } from '../../lib/types';
 import { OverdueTag, PriorityTag, StatusBadge } from './Badges';
+import { Tile } from '../Tile';
 
 interface Props {
   items: Communication[];
@@ -9,22 +10,6 @@ interface Props {
   onDrill: (f: Partial<Filters>) => void;
 }
 
-function Tile(props: { label: string; value: number | string; note?: string; tone?: 'bad'; onClick?: () => void }) {
-  const body = (
-    <>
-      <span className="tile-label">{props.label}</span>
-      <span className={`tile-value ${props.tone === 'bad' ? 'tone-bad' : ''}`}>{props.value}</span>
-      {props.note && <span className="tile-note">{props.note}</span>}
-    </>
-  );
-  return props.onClick ? (
-    <button type="button" className="tile tile-link" onClick={props.onClick}>
-      {body}
-    </button>
-  ) : (
-    <div className="tile">{body}</div>
-  );
-}
 
 /** Single-series horizontal bars with direct value labels. */
 function BarList({ rows, onPick }: { rows: Array<{ label: string; count: number }>; onPick?: (label: string) => void }) {
