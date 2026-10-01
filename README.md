@@ -1,63 +1,81 @@
-# Communications Dashboard
+# WMX Client Communications
 
-A web app for the communications coordinator to log, schedule and track every
-communication that goes out — emails, newsletters, press releases, social posts,
-website updates, memos, SMS, events and print.
+Internal portal for tracking client communications: every call, text and
+message waiting on a response, who owns it, how long it has waited, and when it
+escalates. Built on the same foundation as the WMX Control Panel (marketing
+tracker): same sign-in, sidebar and look, different content.
 
-## What it does
+- **Stack:** Next.js (App Router) on Vercel, Supabase (Postgres + row-level security, Auth).
+- **Contributor rules:** [`CLAUDE.md`](CLAUDE.md)
 
-- **Dashboard** — headline numbers (sent this month, due in the next 7 days,
-  awaiting approval, overdue, total), what's coming up, the approval pipeline,
-  volume by channel, sent per month, and recently sent items. Click any tile or
-  bar to jump to the matching records.
-- **Communications log** — searchable, sortable table with filters for status,
-  channel, owner, date range and overdue items. One-click "Mark sent", and CSV
-  export of whatever is currently filtered.
-- **Calendar** — month view of planned, sent and overdue items. Click an empty
-  part of a day to log a communication on that date.
-- **Record form** — title, channel, status (Draft → In review → Approved →
-  Scheduled → Sent, or Cancelled), priority, audience, owner, requester,
-  scheduled and sent dates, reach, link, tags, key message and notes. Changes to
-  status, dates, owner, channel and priority are kept in a per-record history.
-- **Import / export** — JSON backup and restore (merge or replace), and a full
-  CSV export for spreadsheets.
+## Status
 
-## Where the data lives
+| Phase | Scope | State |
+|---|---|---|
+| 1. Foundation | Sign-in (password + Google), roles, sidebar, Team, Businesses, Overview | Done |
+| 2. Daily work | Client Queue, Clients, Call Log | Next |
+| 3. Escalation & GHL | Escalations page, Slack + email alerts, Settings, GHL connection status | |
+| 4. Outgoing & reporting | Announcements, Reports, templates | |
 
-Records are saved in the browser's local storage on the computer being used —
-there is no server or login. That means:
+The response-time engine, queue logic and GoHighLevel payload parsing already
+exist in `src/lib/comms` with tests; phases 2–4 build screens on top of them.
 
-- Data stays on that one browser profile. Use **Import / export → Download
-  backup** regularly, and to move the log to another machine.
-- Clearing browser data deletes the records.
+## Access
 
-If several people need to share one live log, the storage layer
-(`src/lib/store.ts`) is the single place to swap in a hosted database.
+- Anyone whose email is on **Team** can sign in, with **Continue with Google** or
+  email + password. Everyone else is signed straight back out. The database
+  enforces the same rule.
+- **Admin:** everything, including Team, Businesses and Settings.
+  **Manager:** everything else; receives escalations.
+  **Coordinator:** queue, clients, call log, announcements; can escalate.
+- The database refuses to remove or demote the last admin.
 
-## Running it
+## Setup
 
-Requires Node.js 20+.
+### Environment variables (Vercel → Project → Settings → Environment Variables)
+
+| Name | Value |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://eloznbkkmkdfgjajambo.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase → Project Settings → API Keys → publishable key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → API Keys → secret key. Server only; used for invites and the GHL webhook. |
+| `GHL_WEBHOOK_SECRET` | A long random string; also goes in the GHL webhook URL. |
+
+### Supabase Auth
+
+1. **Authentication → URL Configuration:** Site URL = the Vercel address; add
+   `https://<vercel-address>/**` and `http://localhost:3000/**` to Redirect URLs.
+2. **Authentication → Sign In / Providers → Google:** enable, and paste the
+   Client ID and Client Secret from a Google Cloud OAuth client (type "Web
+   application") whose authorised redirect URI is
+   `https://eloznbkkmkdfgjajambo.supabase.co/auth/v1/callback`.
+
+### GoHighLevel
+
+Workflow → **Webhook** action →
+`https://<vercel-address>/api/ghl/webhook?secret=<GHL_WEBHOOK_SECRET>`.
+Optional Custom Data: `event` = `inbound` (default), `outbound`, `call`,
+`missed_call` or `voicemail`; `message` = the text. Add `&business=<id>` to
+send a workflow's new clients to a business other than the first one.
+
+## Development
 
 ```bash
+cp .env.example .env.local   # fill in the two NEXT_PUBLIC_ values
 npm install
-npm run dev       # local development server
-npm test          # unit tests
-npm run build     # production build into dist/
+npm run dev
+npm test
+npm run build
 ```
 
-`dist/` is a static site (relative paths), so it can be hosted on any static
-host — GitHub Pages, Netlify, Vercel, or an internal web server.
-
-## Project layout
+## Layout
 
 ```
-src/
-  App.tsx                 views, navigation, import/export
-  components/             Dashboard, CommList, Calendar, CommForm, Badges
-  lib/types.ts            record shape, channels, statuses, priorities
-  lib/records.ts          create/update, filters, sorting, stats, CSV, backup parsing
-  lib/store.ts            localStorage persistence hook
-  lib/sample.ts           sample data for a first look
+src/app/login, forgot-password, reset-password   sign-in pages
+src/app/auth/callback                            Google sign-in return
+src/app/dashboard/                               sidebar layout and sections
+src/app/api/ghl/webhook                          GoHighLevel → queue
+src/lib/comms/                                   SLA engine, queue logic, GHL parsing (tested)
+src/lib/announcements/                           outgoing announcements logic (phase 4)
+supabase/migrations/                             schema, applied in order
 ```
-
-To change the list of channels or statuses, edit `src/lib/types.ts`.
