@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { matchesFilter, sortQueue, type QueueFilter } from "@/lib/comms/contacts";
 import { formatMinutes, needsEscalation, slaState } from "@/lib/comms/sla";
 import type { ClientContact, SlaSettings } from "@/lib/comms/types";
@@ -155,7 +156,9 @@ export function QueueList({
                 </div>
                 <div className="min-w-0">
                   <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-zinc-900">
-                    {client?.name ?? "Unknown client"}
+                    <Link href={`/dashboard/clients/${c.clientId}`} className="hover:text-[#B08D57] hover:underline">
+                      {client?.name ?? "Unknown client"}
+                    </Link>
                     {client?.project && <span className="font-normal text-zinc-500">· {client.project}</span>}
                     {c.priority === "Urgent" && (
                       <span className="rounded bg-red-100 px-1.5 text-[11px] font-semibold text-red-700">Urgent</span>
@@ -168,6 +171,10 @@ export function QueueList({
                   <p className="text-xs text-zinc-500">
                     {c.channel} · received {ago(c.receivedAt, now)}
                     {c.source === "ghl" && " · via GoHighLevel"}
+                    {" · "}
+                    <Link href={`/dashboard/clients/${c.clientId}`} className="font-semibold text-[#B08D57] hover:underline">
+                      View conversation
+                    </Link>
                     {client?.phone && (
                       <>
                         {" · "}
