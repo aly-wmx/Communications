@@ -8,6 +8,8 @@ import { WmxWordmark } from "@/components/wmx-wordmark";
 import { signOut } from "./actions";
 import { BusinessSwitcher } from "./BusinessSwitcher";
 import { DashboardNav } from "./DashboardNav";
+import { LiveUpdates } from "./LiveUpdates";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   // Every protected route goes through this check. RLS enforces the same
@@ -18,6 +20,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const { member } = result;
 
   const { businesses, current } = await getBusinessContext();
+  const supabase = await createClient();
+  const { data: team } = await supabase.from("team_members").select("id, name");
+  const teamNames = Object.fromEntries((team ?? []).map((t) => [t.id, t.name]));
+  const businessNames = Object.fromEntries(businesses.map((b) => [b.id, b.name]));
+
   let needsEscalation = 0;
   if (current) {
     const { contacts, sla } = await loadQueue(current.id);
@@ -35,7 +42,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
         <DashboardNav role={member.role} queueBadge={needsEscalation} />
 
-        <div className="mt-auto border-t border-zinc-200 p-4">
+        <div className="mt-auto border-t border-zinc-200 pt-3">
+          <LiveUpdates
+            meId={member.memberId}
+            teamNames={teamNames}
+            businessNames={businessNames}
+            currentBusinessId={current?.id ?? ""}
+          />
+        </div>
+
+        <div className="border-t border-zinc-200 p-4">
           <p className="text-xs text-zinc-500">
             {member.name} · <span className="uppercase">{ROLE_LABELS[member.role]}</span>
           </p>

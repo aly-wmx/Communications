@@ -37,3 +37,17 @@ export function slaFromJson(json: unknown): SlaSettings {
     businessHours: { ...defaultSla.businessHours, ...(s.businessHours ?? {}) },
   };
 }
+
+/** The columns a queue action can change, ready for an UPDATE. */
+export function contactPatch(c: ClientContact): Database["public"]["Tables"]["contacts"]["Update"] {
+  return {
+    assignee_id: c.assigneeId || null,
+    status: c.status,
+    first_response_at: c.firstResponseAt || null,
+    responded_by_id: c.respondedById,
+    resolved_at: c.resolvedAt || null,
+    escalations: c.escalations as unknown as Database["public"]["Tables"]["contacts"]["Update"]["escalations"],
+    history: c.history as unknown as Database["public"]["Tables"]["contacts"]["Update"]["history"],
+    updated_at: c.updatedAt,
+  };
+}
