@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { incomingAlert, type AlertRow, type IncomingAlert } from "@/lib/comms/alerts";
 
@@ -76,6 +76,11 @@ export function LiveUpdates({
   currentBusinessId: string;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const onClientsPage = useRef(false);
+  useEffect(() => {
+    onClientsPage.current = pathname.startsWith("/dashboard/clients");
+  }, [pathname]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [connected, setConnected] = useState(false);
   const sound = useSyncExternalStore(subscribeSettings, readSound, () => true);
@@ -93,9 +98,14 @@ export function LiveUpdates({
   useEffect(() => {
     const supabase = createClient();
 
-    const refreshSoon = () => {
+    const refreshSoon = (delay = 400) => {
       window.clearTimeout(refreshTimer.current);
-      refreshTimer.current = window.setTimeout(() => router.refresh(), 400);
+      refreshTimer.current = window.setTimeout(() => router.refresh(), delay);
+    };
+    // Thread messages arrive in bulk during the history copy: only the Clients screens
+    // show them, and a short pause batches a burst into one refresh.
+    const refreshForMessages = () => {
+      if (onClientsPage.current) refreshSoon(2500);
     };
 
     const alertFor = async (alert: IncomingAlert) => {
@@ -139,13 +149,14 @@ export function LiveUpdates({
 
       channel
         .on("postgres_changes", { event: "*", schema: "public", table: "contacts" }, (payload) => {
-          refreshSoon();
+          refreshSoon(1000);
           if (payload.eventType === "DELETE") return;
           const p = props.current;
           const alert = incomingAlert(payload.eventType, payload.new as AlertRow, p.meId, p.teamNames);
           if (alert) void alertFor(alert);
         })
-        .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, refreshSoon)
+        .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, () => refreshSoon(1000))
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, refreshForMessages)
         .subscribe((status) => {
           setConnected(status === "SUBSCRIBED");
           // Catch up on anything missed while disconnected.

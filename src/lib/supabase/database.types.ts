@@ -176,6 +176,56 @@ export type Database = {
         Update: { key?: string; updated_at?: string; value?: Json };
         Relationships: [];
       };
+      messages: {
+        Row: {
+          body: string;
+          channel: string;
+          client_id: string;
+          conversation_id: string;
+          created_at: string;
+          direction: string;
+          id: string;
+          occurred_at: string;
+          sent_by_user: boolean;
+          source: string;
+          status: string;
+        };
+        Insert: {
+          body?: string;
+          channel: string;
+          client_id: string;
+          conversation_id?: string;
+          created_at?: string;
+          direction: string;
+          id: string;
+          occurred_at: string;
+          sent_by_user?: boolean;
+          source?: string;
+          status?: string;
+        };
+        Update: {
+          body?: string;
+          channel?: string;
+          client_id?: string;
+          conversation_id?: string;
+          created_at?: string;
+          direction?: string;
+          id?: string;
+          occurred_at?: string;
+          sent_by_user?: boolean;
+          source?: string;
+          status?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "messages_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       settings: {
         Row: { id: number; sla: Json; updated_at: string };
         Insert: { id?: number; sla: Json; updated_at?: string };
@@ -216,7 +266,25 @@ export type Database = {
         Relationships: [];
       };
     };
-    Views: { [_ in never]: never };
+    Views: {
+      client_overview: {
+        Row: {
+          business_id: string;
+          email: string;
+          id: string;
+          last_body: string | null;
+          last_channel: string | null;
+          last_direction: string | null;
+          last_message_at: string | null;
+          name: string;
+          owner_id: string | null;
+          phone: string;
+          project: string;
+          waiting: number;
+        };
+        Relationships: [];
+      };
+    };
     Functions: {
       current_member_role: { Args: never; Returns: string };
       is_team_member: { Args: never; Returns: boolean };

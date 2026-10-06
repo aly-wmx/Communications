@@ -121,6 +121,7 @@ export interface GhlApiMessage {
   dateAdded?: string | number;
   /** Set when a person on the team sent it; empty for workflow auto-replies and campaigns. */
   userId?: string;
+  source?: string;
   status?: string;
   meta?: { call?: { status?: string } };
 }
@@ -179,4 +180,68 @@ export function eventFromApiMessage(conv: GhlApiConversation, msg: GhlApiMessage
     messageId: msg.id,
     at: at && at <= now.getTime() ? new Date(at).toISOString() : now.toISOString(),
   };
+}
+
+/** One stored message for a client's conversation thread (every direction, including automation). */
+export interface MessageRecord {
+  id: string;
+  conversationId: string;
+  direction: "inbound" | "outbound";
+  channel: GhlChannel;
+  body: string;
+  status: string;
+  sentByUser: boolean;
+  source: string;
+  occurredAt: string;
+}
+
+/** Thread entry for any real conversation message, or null for system notes. Calls get a readable line. */
+export function messageRecordFromApi(conv: GhlApiConversation, msg: GhlApiMessage, now = new Date()): MessageRecord | null {
+  const type = String(msg.messageType ?? "");
+  if (!msg.id || IGNORED_TYPES.test(type)) return null;
+
+  const direction: MessageRecord["direction"] = (msg.direction ?? "").toLowerCase() === "outbound" ? "outbound" : "inbound";
+  const callStatus = (msg.meta?.call?.status ?? msg.status ?? "").toLowerCase();
+  const isVoicemail = /VOICEMAIL/i.test(type) || callStatus.includes("voicemail");
+  const isCall = /CALL/i.test(type) || isVoicemail;
+
+  let channel: GhlChannel = channelFrom(type.replace(/^TYPE_/i, ""), "");
+  let body = (msg.body ?? "").trim();
+  if (isCall) {
+    const missed = /no-?answer|missed|busy|fail|cancel/.test(callStatus);
+    channel = isVoicemail ? "Voicemail" : missed && direction === "inbound" ? "Missed call" : "Call";
+    const label = isVoicemail
+      ? "Voicemail"
+      : `${direction === "inbound" ? "Incoming" : "Outgoing"} call${callStatus ? ` · ${callStatus.replace(/-/g, " ")}` : ""}`;
+    body = body ? `${label} — ${body}` : label;
+  }
+
+  const at = toMillis(msg.dateAdded);
+  return {
+    id: msg.id,
+    conversationId: (conv.id ?? "").trim(),
+    direction,
+    channel,
+    body: body.slice(0, 5000),
+    status: (msg.status ?? "").slice(0, 40),
+    sentByUser: Boolean(msg.userId),
+    source: String(msg.source ?? "").slice(0, 40),
+    occurredAt: at && at <= now.getTime() ? new Date(at).toISOString() : now.toISOString(),
+  };
+}
+
+/**
+ * The client messages still waiting on the team at the end of a thread: every
+ * inbound message after the last time the team actually engaged (a reply a person
+ * sent, or an answered call). Oldest first; empty when the team spoke last.
+ */
+export function unansweredTail<T extends { direction: string; sentByUser: boolean; occurredAt: string; channel?: string }>(thread: T[]): T[] {
+  const sorted = [...thread].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+  let lastReply = -1;
+  sorted.forEach((m, i) => {
+    const replied = m.direction === "outbound" && m.sentByUser;
+    const answeredCall = m.direction === "inbound" && m.channel === "Call";
+    if (replied || answeredCall) lastReply = i;
+  });
+  return sorted.slice(lastReply + 1).filter((m) => m.direction === "inbound");
 }

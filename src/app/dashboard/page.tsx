@@ -43,6 +43,12 @@ export default async function OverviewPage() {
     supabase.from("team_members").select("name, email, escalation, slack_user_id"),
     supabase.from("integration_state").select("value").eq("key", "ghl_sync").maybeSingle(),
   ]);
+  const { data: backfillRow } = await supabase.from("integration_state").select("value").eq("key", "ghl_backfill").maybeSingle();
+  const backfill = (backfillRow?.value ?? {}) as {
+    done?: boolean;
+    lastError?: string;
+    totals?: { conversations: number; messages: number; queued: number };
+  };
   const sync = (syncRow?.value ?? {}) as { lastOkAt?: string; lastRunAt?: string; lastError?: string };
   const now = new Date();
   const minutesSince = (iso?: string) => (iso ? Math.floor((now.getTime() - new Date(iso).getTime()) / 60_000) : null);
@@ -106,6 +112,18 @@ export default async function OverviewPage() {
                     : okAgo != null
                       ? `no sync for ${formatMinutes(okAgo)}`
                       : "not synced yet"}
+              </span>
+            </Check>
+            <Check done={Boolean(backfill.done)}>
+              Copy conversation history from GoHighLevel
+              <span className="text-zinc-500">
+                {" — "}
+                {backfill.totals
+                  ? `${backfill.totals.conversations.toLocaleString()} conversations, ${backfill.totals.messages.toLocaleString()} messages${
+                      backfill.totals.queued ? `, ${backfill.totals.queued} unanswered added to the queue` : ""
+                    }${backfill.done ? "" : " so far (running every minute)"}`
+                  : "not started"}
+                {backfill.lastError && !backfill.done && ` · paused: ${backfill.lastError}`}
               </span>
             </Check>
             <Check done={escalation.length > 0}>Choose who receives escalations</Check>

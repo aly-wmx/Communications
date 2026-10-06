@@ -1,21 +1,21 @@
-import { eventFromApiMessage, toMillis, type GhlApiConversation, type GhlApiMessage } from "@/lib/comms/ghl";
-import { businessIdFor, recordGhlEvent, secretOk, serviceDb, type Db } from "@/lib/comms/ghl-store";
+import { eventFromApiMessage, messageRecordFromApi, toMillis, type MessageRecord } from "@/lib/comms/ghl";
+import { conversationMessages, ghlConfig, GhlError, searchConversations } from "@/lib/comms/ghl-api";
+import { businessIdFor, ensureClient, recordGhlEvent, secretOk, serviceDb, storeMessages, type Db } from "@/lib/comms/ghl-store";
 import type { Json } from "@/lib/supabase/database.types";
 
 /**
- * Pulls recent GoHighLevel conversations into the client queue.
- * Called once a minute by a Supabase pg_cron job (header x-sync-secret).
+ * Pulls recent GoHighLevel activity into the portal. Called once a minute by a
+ * Supabase pg_cron job (header x-sync-secret).
  *   ?check=1  — connection test: reports counts and field names only, writes nothing.
  *
- * Uses GHL_API_KEY (Private Integration token) and GHL_LOCATION_ID from the
- * server environment. Inbound client messages open/extend queue items; replies a
- * team member sent in GHL mark them responded. Duplicates are ignored, so it is
- * safe to run alongside the webhook and to re-scan overlapping time windows.
+ * Every message is stored on the client's conversation thread. Inbound client
+ * messages open/extend queue items; replies a team member sent in GHL mark them
+ * responded. Duplicates are ignored, so it is safe to re-scan overlapping windows
+ * and to run alongside the webhook and the history copy.
  */
 
 export const maxDuration = 60;
 
-const GHL = "https://services.leadconnectorhq.com";
 const STATE_KEY = "ghl_sync";
 /** First run looks back this far, so a test text sent just before setup still shows up. */
 const FIRST_RUN_LOOKBACK_MS = 15 * 60_000;
@@ -25,43 +25,6 @@ const MAX_CONVERSATIONS = 50;
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-
-class GhlError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
-
-async function ghlGet(path: string, token: string): Promise<unknown> {
-  const res = await fetch(`${GHL}${path}`, {
-    headers: { Authorization: `Bearer ${token}`, Version: "2021-04-15", Accept: "application/json" },
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    const hint =
-      res.status === 401
-        ? "GHL rejected the API key (check GHL_API_KEY is the Private Integration token)."
-        : res.status === 403
-          ? "The API key is missing a scope (needs conversations.readonly and conversations/message.readonly) or the location ID is wrong."
-          : res.status === 429
-            ? "GHL rate limit hit; the next run will catch up."
-            : `GHL returned ${res.status}.`;
-    throw new GhlError(res.status, hint);
-  }
-  return res.json();
-}
-
-function conversationsFrom(body: unknown): GhlApiConversation[] {
-  const list = (body as { conversations?: unknown })?.conversations;
-  return Array.isArray(list) ? (list as GhlApiConversation[]) : [];
-}
-
-function messagesFrom(body: unknown): GhlApiMessage[] {
-  // GHL nests them: { messages: { messages: [...] } }; accept a flat array too.
-  const outer = (body as { messages?: unknown })?.messages;
-  const inner = Array.isArray(outer) ? outer : (outer as { messages?: unknown })?.messages;
-  return Array.isArray(inner) ? (inner as GhlApiMessage[]) : [];
-}
 
 interface SyncState {
   cursor?: string;
@@ -80,10 +43,9 @@ async function saveState(sb: Db, state: SyncState) {
 async function run(req: Request): Promise<Response> {
   if (!secretOk(req, ["x-sync-secret", "x-webhook-secret"])) return json(401, { error: "Unauthorized" });
 
-  const token = process.env.GHL_API_KEY ?? "";
-  const locationId = process.env.GHL_LOCATION_ID ?? "";
-  const check = new URL(req.url).searchParams.get("check") === "1";
-  const missing = [!token && "GHL_API_KEY", !locationId && "GHL_LOCATION_ID"].filter(Boolean);
+  const { token, locationId, missing } = ghlConfig();
+  const params = new URL(req.url).searchParams;
+  const check = params.get("check") === "1";
 
   const sb = serviceDb();
   const { data: stateRow } = await sb.from("integration_state").select("value").eq("key", STATE_KEY).maybeSingle();
@@ -97,21 +59,17 @@ async function run(req: Request): Promise<Response> {
   }
 
   const since = prev.cursor ? toMillis(prev.cursor) - OVERLAP_MS : startedAt.getTime() - FIRST_RUN_LOOKBACK_MS;
-  const counts = { conversations: 0, messages: 0, created: 0, appended: 0, responded: 0, duplicate: 0, skipped: 0 };
+  const counts = { conversations: 0, messages: 0, stored: 0, created: 0, appended: 0, responded: 0, duplicate: 0, skipped: 0 };
 
   try {
-    const search = await ghlGet(
-      `/conversations/search?locationId=${encodeURIComponent(locationId)}&limit=${MAX_CONVERSATIONS}&sortBy=last_message_date&sort=desc`,
-      token,
-    );
-    const conversations = conversationsFrom(search);
+    const conversations = await searchConversations(token, locationId, MAX_CONVERSATIONS);
     const changed = conversations.filter((c) => c.id && toMillis(c.lastMessageDate) >= since);
     counts.conversations = changed.length;
 
     if (check) {
       // Connection test: shapes only, no client names, numbers or message text.
       const sample = changed[0] ?? conversations[0];
-      const msgs = sample?.id ? messagesFrom(await ghlGet(`/conversations/${sample.id}/messages?limit=20`, token)) : [];
+      const msgs = sample?.id ? (await conversationMessages(token, sample.id, 20)).messages : [];
       return json(200, {
         ok: true,
         check: true,
@@ -126,11 +84,29 @@ async function run(req: Request): Promise<Response> {
       });
     }
 
-    const businessId = await businessIdFor(sb, new URL(req.url).searchParams.get("business"));
+    const businessId = await businessIdFor(sb, params.get("business"));
     for (const conv of changed) {
-      const msgs = messagesFrom(await ghlGet(`/conversations/${conv.id}/messages?limit=30`, token))
+      const msgs = (await conversationMessages(token, conv.id!, 30)).messages
         .filter((m) => toMillis(m.dateAdded) >= since)
         .sort((a, b) => toMillis(a.dateAdded) - toMillis(b.dateAdded));
+      if (!msgs.length) continue;
+
+      // The full thread first, so the conversation view is complete even for messages the queue ignores.
+      const records = msgs.map((m) => messageRecordFromApi(conv, m, startedAt)).filter((r): r is MessageRecord => r !== null);
+      if (records.length && (conv.contactId || conv.phone || conv.email)) {
+        const client = await ensureClient(
+          sb,
+          {
+            ghlContactId: conv.contactId ?? "",
+            name: (conv.fullName || conv.contactName || "").trim(),
+            phone: conv.phone ?? "",
+            email: conv.email ?? "",
+          },
+          businessId,
+        );
+        counts.stored += await storeMessages(sb, client.id, records);
+      }
+
       for (const msg of msgs) {
         counts.messages++;
         const event = eventFromApiMessage(conv, msg, startedAt);

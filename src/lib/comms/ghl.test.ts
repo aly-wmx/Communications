@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { channelFrom, eventFromApiMessage, normalisePhone, parseGhlPayload, toMillis } from './ghl';
+import { channelFrom, eventFromApiMessage, messageRecordFromApi, normalisePhone, parseGhlPayload, toMillis, unansweredTail } from './ghl';
 
 const now = new Date('2026-10-02T15:00:00Z');
 
@@ -99,5 +99,55 @@ describe('eventFromApiMessage', () => {
     expect(toMillis(1759413600000)).toBe(1759413600000);
     expect(toMillis('1759413600000')).toBe(1759413600000);
     expect(eventFromApiMessage(conv, { id: 'm5', direction: 'inbound', messageType: 'TYPE_EMAIL', dateAdded: '2030-01-01' }, now)?.at).toBe(now.toISOString());
+  });
+});
+
+describe('messageRecordFromApi', () => {
+  const conv = { id: 'cv1', contactId: 'c1', fullName: 'Maria' };
+  const at = '2026-10-02T14:00:00.000Z';
+
+  it('keeps every real message, including automated outbound', () => {
+    const r = messageRecordFromApi(conv, { id: 'm1', direction: 'outbound', messageType: 'TYPE_SMS', body: 'Thanks!', dateAdded: at, source: 'workflow' }, now);
+    expect(r).toMatchObject({ id: 'm1', conversationId: 'cv1', direction: 'outbound', channel: 'Text', body: 'Thanks!', sentByUser: false, source: 'workflow', occurredAt: at });
+  });
+
+  it('writes readable call lines', () => {
+    const call = (direction: string, status: string, type = 'TYPE_CALL') =>
+      messageRecordFromApi(conv, { id: 'm2', direction, messageType: type, dateAdded: at, meta: { call: { status } } }, now);
+    expect(call('inbound', 'no-answer')).toMatchObject({ channel: 'Missed call', body: 'Incoming call · no answer' });
+    expect(call('inbound', 'completed', 'TYPE_IVR_CALL')).toMatchObject({ channel: 'Call', body: 'Incoming call · completed' });
+    expect(call('outbound', 'completed')).toMatchObject({ channel: 'Call', body: 'Outgoing call · completed' });
+    expect(call('inbound', 'voicemail')).toMatchObject({ channel: 'Voicemail', body: 'Voicemail' });
+  });
+
+  it('drops system notes', () => {
+    expect(messageRecordFromApi(conv, { id: 'm3', direction: 'inbound', messageType: 'TYPE_ACTIVITY_OPPORTUNITY', dateAdded: at }, now)).toBeNull();
+  });
+});
+
+describe('unansweredTail', () => {
+  const m = (direction: string, sentByUser: boolean, occurredAt: string) => ({ direction, sentByUser, occurredAt });
+
+  it('returns client messages after the last human reply', () => {
+    const thread = [
+      m('inbound', false, '2026-10-01T10:00:00Z'),
+      m('outbound', true, '2026-10-01T11:00:00Z'),
+      m('inbound', false, '2026-10-02T09:00:00Z'),
+      m('outbound', false, '2026-10-02T09:01:00Z'), // auto-reply doesn't count
+      m('inbound', false, '2026-10-02T09:30:00Z'),
+    ];
+    expect(unansweredTail(thread).map((x) => x.occurredAt)).toEqual(['2026-10-02T09:00:00Z', '2026-10-02T09:30:00Z']);
+  });
+
+  it('treats an answered incoming call as the team engaging', () => {
+    const thread = [
+      { ...m('inbound', false, '2026-10-01T10:00:00Z'), channel: 'Text' },
+      { ...m('inbound', false, '2026-10-01T10:05:00Z'), channel: 'Call' },
+    ];
+    expect(unansweredTail(thread)).toEqual([]);
+  });
+
+  it('is empty when the team replied last', () => {
+    expect(unansweredTail([m('inbound', false, '2026-10-01T10:00:00Z'), m('outbound', true, '2026-10-01T11:00:00Z')])).toEqual([]);
   });
 });

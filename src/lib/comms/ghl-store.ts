@@ -2,7 +2,7 @@ import "server-only";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/supabase/database.types";
-import { normalisePhone, type GhlEvent } from "./ghl";
+import { normalisePhone, type GhlEvent, type MessageRecord } from "./ghl";
 
 /**
  * Writes GoHighLevel activity into the queue. Shared by the webhook (GHL pushes)
@@ -49,47 +49,100 @@ interface ClientRow {
   ghl_contact_id: string | null;
 }
 
-async function findOrCreateClient(sb: Db, e: GhlEvent, businessId: string): Promise<ClientRow> {
+/** Escape LIKE wildcards so an exact match stays exact. */
+const likeExact = (v: string) => v.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+export interface ClientIdentity {
+  ghlContactId: string;
+  name: string;
+  phone: string;
+  email: string;
+}
+
+/**
+ * Find the client for a GHL contact (by GHL id, then phone, then email) or create one.
+ * Uses indexed lookups so it stays fast with thousands of clients.
+ */
+export async function ensureClient(sb: Db, who: ClientIdentity, businessId: string): Promise<ClientRow> {
   const cols = "id,name,phone,email,owner_id,ghl_contact_id";
-  if (e.ghlContactId) {
-    const { data } = await sb.from("clients").select(cols).eq("ghl_contact_id", e.ghlContactId).maybeSingle();
+  if (who.ghlContactId) {
+    const { data } = await sb.from("clients").select(cols).eq("ghl_contact_id", who.ghlContactId).maybeSingle();
     if (data) return data as ClientRow;
   }
-  const { data: all, error } = await sb.from("clients").select(cols);
-  if (error) throw error;
-  const phone = normalisePhone(e.phone);
-  const match = (all as ClientRow[]).find(
-    (c) =>
-      (phone.length >= 7 && normalisePhone(c.phone) === phone) ||
-      (e.email && c.email.toLowerCase() === e.email.toLowerCase()),
-  );
-  if (match) {
-    // Remember the GHL id so future events match directly.
-    if (e.ghlContactId && !match.ghl_contact_id) {
-      await sb.from("clients").update({ ghl_contact_id: e.ghlContactId }).eq("id", match.id);
+
+  const digits = normalisePhone(who.phone);
+  const [byPhone, byEmail] = await Promise.all([
+    digits.length >= 7 ? sb.from("clients").select(cols).like("phone", `%${digits.slice(-4)}`).limit(50) : null,
+    who.email ? sb.from("clients").select(cols).ilike("email", likeExact(who.email)).limit(5) : null,
+  ]);
+  const candidates = [...(byPhone?.data ?? []), ...(byEmail?.data ?? [])];
+  if (candidates.length) {
+    const match = (candidates as ClientRow[]).find(
+      (c) =>
+        (digits.length >= 7 && normalisePhone(c.phone) === digits) ||
+        (who.email && c.email.toLowerCase() === who.email.toLowerCase()),
+    );
+    if (match) {
+      // Remember the GHL id so future events match directly.
+      if (who.ghlContactId && !match.ghl_contact_id) {
+        await sb.from("clients").update({ ghl_contact_id: who.ghlContactId }).eq("id", match.id);
+      }
+      return match;
     }
-    return match;
   }
 
-  // Client names are unique; disambiguate a clash with the phone number.
-  const taken = new Set((all as ClientRow[]).map((c) => c.name.trim().toLowerCase()));
-  let name = e.name || "Unknown client";
-  if (taken.has(name.toLowerCase())) name = `${name} (${e.phone || e.email || e.ghlContactId})`;
+  // Client names are unique; disambiguate a clash with the phone/email, then a short id.
+  const base = who.name || who.phone || who.email || "Unknown client";
+  const candidatesNames = [base, `${base} (${who.phone || who.email || who.ghlContactId.slice(0, 8)})`, `${base} (${randomUUID().slice(0, 6)})`];
+  for (const name of candidatesNames) {
+    const { data, error } = await sb
+      .from("clients")
+      .insert({
+        id: `cl_${randomUUID()}`,
+        business_id: businessId,
+        name,
+        phone: who.phone,
+        email: who.email,
+        ghl_contact_id: who.ghlContactId || null,
+      })
+      .select(cols)
+      .single();
+    if (!error) return data as ClientRow;
+    if (error.message.includes("clients_ghl_contact_id_key") && who.ghlContactId) {
+      // Created by a parallel run a moment ago.
+      const { data: existing } = await sb.from("clients").select(cols).eq("ghl_contact_id", who.ghlContactId).single();
+      if (existing) return existing as ClientRow;
+    }
+    if (!error.message.includes("clients_name_key")) throw error;
+  }
+  throw new Error("Could not create a client record.");
+}
 
-  const { data, error: insErr } = await sb
-    .from("clients")
-    .insert({
-      id: `cl_${randomUUID()}`,
-      business_id: businessId,
-      name,
-      phone: e.phone,
-      email: e.email,
-      ghl_contact_id: e.ghlContactId || null,
-    })
-    .select(cols)
-    .single();
-  if (insErr) throw insErr;
-  return data as ClientRow;
+const findOrCreateClient = (sb: Db, e: GhlEvent, businessId: string) => ensureClient(sb, e, businessId);
+
+/** Store thread messages for a client; already-stored ones are left alone. */
+export async function storeMessages(sb: Db, clientId: string, records: MessageRecord[]): Promise<number> {
+  if (!records.length) return 0;
+  const { data, error } = await sb
+    .from("messages")
+    .upsert(
+      records.map((r) => ({
+        id: r.id,
+        client_id: clientId,
+        conversation_id: r.conversationId,
+        direction: r.direction,
+        channel: r.channel,
+        body: r.body,
+        status: r.status,
+        sent_by_user: r.sentByUser,
+        source: r.source,
+        occurred_at: r.occurredAt,
+      })),
+      { onConflict: "id", ignoreDuplicates: true },
+    )
+    .select("id");
+  if (error) throw error;
+  return data?.length ?? 0;
 }
 
 export function describe(e: GhlEvent): string {
