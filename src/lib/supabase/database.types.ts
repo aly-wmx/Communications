@@ -156,6 +156,26 @@ export type Database = {
           },
         ];
       };
+      ghl_messages: {
+        Row: { contact_id: string | null; direction: string; id: string; processed_at: string };
+        Insert: { contact_id?: string | null; direction: string; id: string; processed_at?: string };
+        Update: { contact_id?: string | null; direction?: string; id?: string; processed_at?: string };
+        Relationships: [
+          {
+            foreignKeyName: "ghl_messages_contact_id_fkey";
+            columns: ["contact_id"];
+            isOneToOne: false;
+            referencedRelation: "contacts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      integration_state: {
+        Row: { key: string; updated_at: string; value: Json };
+        Insert: { key: string; updated_at?: string; value?: Json };
+        Update: { key?: string; updated_at?: string; value?: Json };
+        Relationships: [];
+      };
       settings: {
         Row: { id: number; sla: Json; updated_at: string };
         Insert: { id?: number; sla: Json; updated_at?: string };

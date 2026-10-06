@@ -38,11 +38,17 @@ export default async function OverviewPage() {
   const member = await getSessionMember();
   const { current } = await getBusinessContext();
   const supabase = await createClient();
-  const [{ contacts, sla }, { data: team }] = await Promise.all([
+  const [{ contacts, sla }, { data: team }, { data: syncRow }] = await Promise.all([
     current ? loadQueue(current.id) : Promise.resolve({ contacts: [], sla: undefined }),
     supabase.from("team_members").select("name, email, escalation, slack_user_id"),
+    supabase.from("integration_state").select("value").eq("key", "ghl_sync").maybeSingle(),
   ]);
-  const stats = sla ? queueStats(contacts, sla, new Date()) : null;
+  const sync = (syncRow?.value ?? {}) as { lastOkAt?: string; lastRunAt?: string; lastError?: string };
+  const now = new Date();
+  const minutesSince = (iso?: string) => (iso ? Math.floor((now.getTime() - new Date(iso).getTime()) / 60_000) : null);
+  const okAgo = minutesSince(sync.lastOkAt);
+  const ghlHealthy = okAgo != null && okAgo <= 5 && (!sync.lastRunAt || sync.lastRunAt <= (sync.lastOkAt ?? ""));
+  const stats = sla ? queueStats(contacts, sla, now) : null;
 
   const people = team ?? [];
   const missingEmail = people.filter((p) => !p.email).map((p) => p.name);
@@ -88,6 +94,19 @@ export default async function OverviewPage() {
             <Check done={missingEmail.length === 0}>
               Add sign-in emails for everyone on the team
               {missingEmail.length > 0 && <span className="text-zinc-500"> — still missing: {missingEmail.join(", ")}</span>}
+            </Check>
+            <Check done={ghlHealthy}>
+              Connect GoHighLevel
+              <span className="text-zinc-500">
+                {" — "}
+                {ghlHealthy
+                  ? `last synced ${okAgo === 0 ? "just now" : `${okAgo} min ago`}`
+                  : sync.lastError
+                    ? `last attempt failed: ${sync.lastError}`
+                    : okAgo != null
+                      ? `no sync for ${formatMinutes(okAgo)}`
+                      : "not synced yet"}
+              </span>
             </Check>
             <Check done={escalation.length > 0}>Choose who receives escalations</Check>
             <Check done={escalation.length > 0 && escalationMissingSlack.length === 0}>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { channelFrom, normalisePhone, parseGhlPayload } from './ghl';
+import { channelFrom, eventFromApiMessage, normalisePhone, parseGhlPayload, toMillis } from './ghl';
 
 const now = new Date('2026-10-02T15:00:00Z');
 
@@ -64,5 +64,40 @@ describe('helpers', () => {
 
   it('normalises phone numbers', () => {
     expect(normalisePhone('+1 (555) 014-2000')).toBe(normalisePhone('5550142000'));
+  });
+});
+
+describe('eventFromApiMessage', () => {
+  const conv = { id: 'cv1', contactId: 'c1', fullName: 'Maria Hernandez', phone: '+15550142000' };
+  const at = '2026-10-02T14:00:00.000Z';
+
+  it('turns an inbound SMS into an event', () => {
+    expect(eventFromApiMessage(conv, { id: 'm1', direction: 'inbound', messageType: 'TYPE_SMS', body: 'Hi', dateAdded: at }, now)).toMatchObject({
+      direction: 'inbound', channel: 'Text', ghlContactId: 'c1', name: 'Maria Hernandez', body: 'Hi', messageId: 'm1', at,
+    });
+  });
+
+  it('keeps missed calls and voicemails, skips answered inbound calls', () => {
+    const call = (status: string) => ({ id: 'm2', direction: 'inbound', messageType: 'TYPE_CALL', dateAdded: at, meta: { call: { status } } });
+    expect(eventFromApiMessage(conv, call('no-answer'), now)?.channel).toBe('Missed call');
+    expect(eventFromApiMessage(conv, call('voicemail'), now)?.channel).toBe('Voicemail');
+    expect(eventFromApiMessage(conv, call('completed'), now)).toBeNull();
+  });
+
+  it('counts outbound only when a person sent it', () => {
+    const out = { id: 'm3', direction: 'outbound', messageType: 'TYPE_SMS', body: 'On our way', dateAdded: at };
+    expect(eventFromApiMessage(conv, out, now)).toBeNull();
+    expect(eventFromApiMessage(conv, { ...out, userId: 'u1' }, now)?.direction).toBe('outbound');
+  });
+
+  it('ignores system notes and messages without an id', () => {
+    expect(eventFromApiMessage(conv, { id: 'm4', direction: 'inbound', messageType: 'TYPE_ACTIVITY_CONTACT', dateAdded: at }, now)).toBeNull();
+    expect(eventFromApiMessage(conv, { direction: 'inbound', messageType: 'TYPE_SMS', dateAdded: at }, now)).toBeNull();
+  });
+
+  it('reads epoch timestamps and clamps future ones', () => {
+    expect(toMillis(1759413600000)).toBe(1759413600000);
+    expect(toMillis('1759413600000')).toBe(1759413600000);
+    expect(eventFromApiMessage(conv, { id: 'm5', direction: 'inbound', messageType: 'TYPE_EMAIL', dateAdded: '2030-01-01' }, now)?.at).toBe(now.toISOString());
   });
 });

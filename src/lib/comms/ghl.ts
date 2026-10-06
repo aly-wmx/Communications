@@ -98,3 +98,85 @@ export function parseGhlPayload(body: unknown, now = new Date()): GhlEvent {
     at: parsed && !Number.isNaN(parsed.getTime()) && parsed <= now ? parsed.toISOString() : now.toISOString(),
   };
 }
+
+// ---------- GoHighLevel API (used by the once-a-minute sync) ----------
+
+/** The fields the sync reads from GET /conversations/search. Everything is optional: GHL omits empty fields. */
+export interface GhlApiConversation {
+  id?: string;
+  contactId?: string;
+  fullName?: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  lastMessageDate?: number | string;
+}
+
+/** The fields the sync reads from GET /conversations/:id/messages. */
+export interface GhlApiMessage {
+  id?: string;
+  direction?: string;
+  body?: string;
+  messageType?: string | number;
+  dateAdded?: string | number;
+  /** Set when a person on the team sent it; empty for workflow auto-replies and campaigns. */
+  userId?: string;
+  status?: string;
+  meta?: { call?: { status?: string } };
+}
+
+export function toMillis(v: unknown): number {
+  if (typeof v === "number") return v;
+  if (typeof v === "string" && v) {
+    const n = /^\d+$/.test(v) ? Number(v) : Date.parse(v);
+    return Number.isNaN(n) ? 0 : n;
+  }
+  return 0;
+}
+
+/** Message types that are system notes, not client conversation. */
+const IGNORED_TYPES = /ACTIVITY|INTERNAL|COMMENT|CAMPAIGN|REVIEW/i;
+
+/**
+ * Turn one message from the GHL API into a queue event, or null when it's not
+ * something the queue tracks (system notes, answered inbound calls, automated
+ * outbound messages that nobody on the team actually sent).
+ */
+export function eventFromApiMessage(conv: GhlApiConversation, msg: GhlApiMessage, now = new Date()): GhlEvent | null {
+  const type = String(msg.messageType ?? "");
+  if (!msg.id || IGNORED_TYPES.test(type)) return null;
+
+  const direction: GhlEvent["direction"] = (msg.direction ?? "").toLowerCase() === "outbound" ? "outbound" : "inbound";
+  const callStatus = (msg.meta?.call?.status ?? msg.status ?? "").toLowerCase();
+  const isCall = /CALL/i.test(type);
+  const isVoicemail = /VOICEMAIL/i.test(type) || callStatus.includes("voicemail");
+
+  let channel = channelFrom(type.replace(/^TYPE_/i, ""), "");
+  if (isCall || isVoicemail) {
+    if (direction === "inbound") {
+      if (isVoicemail) channel = "Voicemail";
+      else if (/no-?answer|missed|busy|fail|cancel/.test(callStatus)) channel = "Missed call";
+      else return null; // Answered: the client already spoke to someone.
+    } else {
+      channel = "Call";
+    }
+  }
+
+  // Only a reply a person sent counts as responding; auto-replies would hide unanswered clients.
+  if (direction === "outbound" && !msg.userId) return null;
+
+  const at = toMillis(msg.dateAdded);
+  const phone = (conv.phone ?? "").trim();
+  const email = (conv.email ?? "").trim();
+  return {
+    direction,
+    channel,
+    ghlContactId: (conv.contactId ?? "").trim(),
+    name: (conv.fullName || conv.contactName || phone || email || "").trim(),
+    phone,
+    email,
+    body: (msg.body ?? "").trim().slice(0, 2000),
+    messageId: msg.id,
+    at: at && at <= now.getTime() ? new Date(at).toISOString() : now.toISOString(),
+  };
+}
