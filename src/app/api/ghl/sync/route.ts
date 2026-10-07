@@ -1,6 +1,7 @@
 import { eventFromApiMessage, messageRecordFromApi, toMillis, type MessageRecord } from "@/lib/comms/ghl";
 import { conversationMessages, fetchEmailText, ghlConfig, GhlError, searchConversations } from "@/lib/comms/ghl-api";
 import { htmlToText } from "@/lib/comms/outbound";
+import { teamGhlContactIds } from "@/lib/comms/notify-store";
 import { businessIdFor, cronSecretOk, ensureClient, recordGhlEvent, serviceDb, storeMessages, type Db } from "@/lib/comms/ghl-store";
 import type { Json } from "@/lib/supabase/database.types";
 
@@ -98,7 +99,9 @@ async function run(req: Request): Promise<Response> {
     }
 
     const businessId = await businessIdFor(sb, params.get("business"));
+    const teamContacts = await teamGhlContactIds(sb);
     for (const conv of changed) {
+      if (conv.contactId && teamContacts.has(conv.contactId)) continue;
       const msgs = (await conversationMessages(token, conv.id!, 30)).messages
         .filter((m) => toMillis(m.dateAdded) >= since)
         .sort((a, b) => toMillis(a.dateAdded) - toMillis(b.dateAdded));

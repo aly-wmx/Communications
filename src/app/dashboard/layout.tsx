@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { checkSession } from "@/lib/auth";
 import { getBusinessContext } from "@/lib/business";
-import { queueStats } from "@/lib/comms/contacts";
+import { awaitingPickup, queueStats } from "@/lib/comms/contacts";
 import { loadQueue } from "@/lib/comms/load";
 import { ROLE_LABELS } from "@/lib/roles";
 import { WmxWordmark } from "@/components/wmx-wordmark";
@@ -26,10 +26,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const teamNames = Object.fromEntries((team ?? []).map((t) => [t.id, t.name]));
   const businessNames = Object.fromEntries(businesses.map((b) => [b.id, b.name]));
 
-  let needsEscalation = 0;
+  let waitingOnUs = 0;
+  let escalationBadge = 0;
   if (current) {
     const { contacts, sla } = await loadQueue(current.id);
-    needsEscalation = queueStats(contacts, sla, new Date()).needsEscalation;
+    const stats = queueStats(contacts, sla, new Date());
+    waitingOnUs = stats.waiting;
+    escalationBadge = stats.needsEscalation + contacts.filter(awaitingPickup).length;
   }
 
   return (
@@ -37,7 +40,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <SidebarShell brand={<WmxWordmark />}>
         {current && <BusinessSwitcher businesses={businesses} currentId={current.id} />}
 
-        <DashboardNav role={member.role} queueBadge={needsEscalation} />
+        <DashboardNav role={member.role} queueBadge={waitingOnUs} escalationBadge={escalationBadge} />
 
         <div className="mt-auto border-t border-zinc-200 pt-3">
           <LiveUpdates

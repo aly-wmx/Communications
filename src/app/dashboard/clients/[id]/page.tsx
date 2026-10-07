@@ -41,11 +41,11 @@ export default async function ClientThreadPage({ params, searchParams }: PagePro
     supabase.from("messages").select("id", { count: "exact", head: true }).eq("client_id", id),
     supabase
       .from("contacts")
-      .select("id, channel, status, summary, received_at, assignee_id")
+      .select("id, channel, status, summary, received_at, assignee_id, escalations")
       .eq("client_id", id)
       .neq("status", "Resolved")
       .order("received_at"),
-    supabase.from("team_members").select("id, name").order("name"),
+    supabase.from("team_members").select("id, name, escalation").order("name"),
   ]);
   if (!client) notFound();
 
@@ -72,14 +72,21 @@ export default async function ClientThreadPage({ params, searchParams }: PagePro
       ? `https://app.gohighlevel.com/v2/location/${locationId}/conversations/conversations/${conversationId}`
       : "";
 
-  const openContacts: OpenContact[] = (open ?? []).map((c) => ({
-    id: c.id,
-    channel: c.channel,
-    status: c.status,
-    summary: c.summary,
-    receivedLabel: `received ${when(c.received_at)}`,
-    assigneeId: c.assignee_id ?? "",
-  }));
+  const nameOf = (id?: string) => (team ?? []).find((t) => t.id === id)?.name ?? "someone";
+  const openContacts: OpenContact[] = (open ?? []).map((c) => {
+    const escalations = (c.escalations as Array<{ acknowledgedById?: string; acknowledgedAt?: string }> | null) ?? [];
+    const lastPicked = [...escalations].reverse().find((e) => e.acknowledgedAt);
+    return {
+      id: c.id,
+      channel: c.channel,
+      status: c.status,
+      summary: c.summary,
+      receivedLabel: `received ${when(c.received_at)}`,
+      assigneeId: c.assignee_id ?? "",
+      awaitingPickup: escalations.some((e) => !e.acknowledgedAt),
+      pickedUpLabel: lastPicked ? `Picked up by ${nameOf(lastPicked.acknowledgedById)} · ${when(lastPicked.acknowledgedAt!)}` : "",
+    };
+  });
   const waiting = openContacts.some((c) => c.status === "Open");
 
   return (
@@ -149,7 +156,7 @@ export default async function ClientThreadPage({ params, searchParams }: PagePro
           />
 
           {openContacts.length > 0 ? (
-            <ContactActions contacts={openContacts} team={team ?? []} />
+            <ContactActions contacts={openContacts} team={team ?? []} meId={me?.memberId ?? ""} clientName={client.name} />
           ) : (
             <section className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 shadow-sm">
               Nothing waiting on us for this client.

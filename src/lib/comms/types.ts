@@ -48,6 +48,9 @@ export interface Escalation {
   reason: 'manual' | 'sla';
   notifiedIds: string[];
   note: string;
+  /** Who said "I've got it", and when. */
+  acknowledgedById?: string;
+  acknowledgedAt?: string;
 }
 
 export interface ContactEvent {
@@ -70,6 +73,8 @@ export interface ClientContact {
   firstResponseAt: string;
   respondedById: string;
   resolvedAt: string;
+  /** When the assignee was reminded (once per contact), '' if not yet. */
+  remindedAt?: string;
   escalations: Escalation[];
   history: ContactEvent[];
   /** 'manual' now; 'ghl' once GoHighLevel webhooks create contacts. */

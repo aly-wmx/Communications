@@ -9,7 +9,12 @@ export const emailSchema = z.object({
 
 export const newPasswordSchema = z
   .object({
-    password: z.string().min(8, "Use at least 8 characters."),
+    password: z
+      .string()
+      .min(12, "Use at least 12 characters.")
+      .regex(/[a-z]/, "Include a lowercase letter.")
+      .regex(/[A-Z]/, "Include an uppercase letter.")
+      .regex(/\d/, "Include a number."),
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {

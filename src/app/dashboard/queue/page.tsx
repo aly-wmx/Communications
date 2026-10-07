@@ -14,7 +14,7 @@ export default async function QueuePage() {
   const [{ contacts, sla }, { data: clientRows }, { data: team }] = await Promise.all([
     loadQueue(current.id),
     supabase.from("clients").select("id, name, project, phone").eq("business_id", current.id),
-    supabase.from("team_members").select("id, name").order("name"),
+    supabase.from("team_members").select("id, name, escalation").order("name"),
   ]);
 
   const clients: Record<string, QueueClient> = Object.fromEntries(

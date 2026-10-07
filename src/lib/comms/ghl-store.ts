@@ -3,6 +3,8 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/supabase/database.types";
 import { normalisePhone, type GhlEvent, type MessageRecord } from "./ghl";
+import { planNewMessage } from "./notify-plan";
+import { loadTeam, planTeam, saveNotifications } from "./notify-store";
 
 /**
  * Writes GoHighLevel activity into the queue. Shared by the webhook (GHL pushes)
@@ -249,10 +251,36 @@ async function handleOutbound(sb: Db, e: GhlEvent, client: ClientRow) {
   return { action: "responded" as const, updated: open?.length ?? 0, contactId: open?.[0]?.id };
 }
 
+async function notifyNewMessage(sb: Db, contactId: string, clientId: string, clientName: string, e: GhlEvent) {
+  const [{ data: contact }, { data: settings }, team] = await Promise.all([
+    sb.from("contacts").select("assignee_id, priority").eq("id", contactId).maybeSingle(),
+    sb.from("settings").select("sla").eq("id", 1).maybeSingle(),
+    loadTeam(sb),
+  ]);
+  const planned = planNewMessage(
+    {
+      clientName,
+      channel: e.channel,
+      summary: e.body,
+      waitedMinutes: 0,
+      urgent: contact?.priority === "Urgent",
+      assigneeId: contact?.assignee_id ?? "",
+      defaultAssigneeId: (settings?.sla as { defaultAssigneeId?: string } | null)?.defaultAssigneeId ?? "",
+    },
+    planTeam(team),
+  );
+  await saveNotifications(sb, planned, { contactId, clientId });
+}
+
 export type RecordResult = { action: "created" | "appended" | "responded" | "duplicate"; contactId?: string; clientId?: string; updated?: number };
 
 /** Record one GHL message. Safe to call more than once for the same message. */
 export async function recordGhlEvent(sb: Db, e: GhlEvent, businessId: string): Promise<RecordResult> {
+  // Teammates are GHL contacts too (for notification emails); their messages aren't client contact.
+  if (e.ghlContactId) {
+    const { data: teammate } = await sb.from("team_members").select("id").eq("ghl_contact_id", e.ghlContactId).maybeSingle();
+    if (teammate) return { action: "duplicate" };
+  }
   if (e.messageId) {
     // Claim the message id; if it was already claimed, someone else handled it.
     const { data: claimed, error } = await sb
@@ -268,6 +296,13 @@ export async function recordGhlEvent(sb: Db, e: GhlEvent, businessId: string): P
     const result = e.direction === "outbound" ? await handleOutbound(sb, e, client) : await handleInbound(sb, e, client);
     if (e.messageId && result.contactId) {
       await sb.from("ghl_messages").update({ contact_id: result.contactId }).eq("id", e.messageId);
+    }
+    // A fresh client message that opened a queue item: tell whoever is responsible.
+    // (History copied from the past never alerts.)
+    if (result.action === "created" && result.contactId && Date.now() - new Date(e.at).getTime() < 30 * 60_000) {
+      await notifyNewMessage(sb, result.contactId, client.id, client.name, e).catch((err) =>
+        console.error("new-message notification failed", err),
+      );
     }
     return { ...result, clientId: client.id };
   } catch (err) {

@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { newPasswordSchema } from "@/lib/validation/auth";
+import { isPwnedPassword } from "@/lib/pwned";
 
 export interface ResetPasswordResult {
   error: string | null;
@@ -17,6 +18,10 @@ export async function updatePassword(
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  }
+
+  if (await isPwnedPassword(parsed.data.password)) {
+    return { error: "That password has appeared in a known data breach. Please choose a different one." };
   }
 
   const supabase = await createClient();

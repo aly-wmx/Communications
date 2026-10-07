@@ -14,6 +14,7 @@ const MAIN: Tab[] = [
   { href: "/dashboard/calls", label: "Call Log" },
   { href: "/dashboard/announcements", label: "Announcements" },
   { href: "/dashboard/reports", label: "Reports" },
+  { href: "/dashboard/notifications", label: "Notifications" },
 ];
 
 const ADMIN: Tab[] = [
@@ -22,13 +23,14 @@ const ADMIN: Tab[] = [
   { href: "/dashboard/settings", label: "Settings", adminOnly: true },
 ];
 
-export function DashboardNav({ role, queueBadge }: { role: Role; queueBadge: number }) {
+export function DashboardNav({ role, queueBadge, escalationBadge }: { role: Role; queueBadge: number; escalationBadge: number }) {
   const pathname = usePathname();
 
   const link = (tab: Tab) => {
     // "/dashboard" must match exactly, or it would be active on every nested route.
     const active = tab.href === "/dashboard" ? pathname === tab.href : pathname.startsWith(tab.href);
-    const badge = tab.href === "/dashboard/queue" && queueBadge > 0 ? queueBadge : null;
+    const count = tab.href === "/dashboard/queue" ? queueBadge : tab.href === "/dashboard/escalations" ? escalationBadge : 0;
+    const badge = count > 0 ? count : null;
     return (
       <Link
         key={tab.href}
@@ -43,8 +45,10 @@ export function DashboardNav({ role, queueBadge }: { role: Role; queueBadge: num
         {tab.label}
         {badge && (
           <span
-            className="rounded-full bg-red-600 px-1.5 text-[11px] font-semibold text-white"
-            aria-label={`${badge} need escalation`}
+            className={`rounded-full px-1.5 text-[11px] font-semibold ${
+              tab.href === "/dashboard/escalations" ? "bg-red-600 text-white" : "bg-zinc-200 text-zinc-700"
+            }`}
+            aria-label={`${badge} need attention`}
           >
             {badge}
           </span>

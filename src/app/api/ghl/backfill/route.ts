@@ -1,5 +1,6 @@
 import { eventFromApiMessage, messageRecordFromApi, toMillis, unansweredTail, type GhlApiConversation, type MessageRecord } from "@/lib/comms/ghl";
 import { conversationMessages, ghlConfig, GhlError, searchConversations } from "@/lib/comms/ghl-api";
+import { teamGhlContactIds } from "@/lib/comms/notify-store";
 import { businessIdFor, cronSecretOk, ensureClient, recordGhlEvent, serviceDb, storeMessages, type Db } from "@/lib/comms/ghl-store";
 import type { Json } from "@/lib/supabase/database.types";
 
@@ -76,6 +77,7 @@ async function run(req: Request): Promise<Response> {
   await save(sb, state);
 
   const businessId = await businessIdFor(sb, new URL(req.url).searchParams.get("business"));
+  const teamContacts = await teamGhlContactIds(sb);
   const batch = { conversations: 0, messages: 0, queued: 0 };
 
   try {
@@ -97,6 +99,10 @@ async function run(req: Request): Promise<Response> {
       }
 
       const { conv, page, lastMessageId } = state.current;
+      if (conv.contactId && teamContacts.has(conv.contactId)) {
+        state.current = undefined;
+        continue;
+      }
       const res = await conversationMessages(token, conv.id!, PAGE, lastMessageId);
       const records = res.messages
         .map((m) => ({ api: m, rec: messageRecordFromApi(conv, m, now) }))

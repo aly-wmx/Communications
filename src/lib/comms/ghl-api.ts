@@ -135,6 +135,7 @@ export async function upsertGhlContact(
   token: string,
   locationId: string,
   who: { name: string; phone: string; email: string },
+  tags?: string[],
 ): Promise<{ id: string }> {
   const [firstName, ...rest] = who.name.trim().split(/\s+/);
   const res = (await ghlPost(
@@ -147,6 +148,7 @@ export async function upsertGhlContact(
       lastName: rest.join(" ") || undefined,
       phone: who.phone || undefined,
       email: who.email || undefined,
+      tags: tags?.length ? tags : undefined,
       source: "WMX Client Communications portal",
     },
     "2021-07-28",

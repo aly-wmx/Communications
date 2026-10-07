@@ -5,11 +5,20 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { incomingAlert, type AlertRow, type IncomingAlert } from "@/lib/comms/alerts";
+import { NotificationBell } from "./NotificationBell";
 
 interface Toast extends IncomingAlert {
   clientName: string;
   businessName: string;
+  link?: string;
 }
+
+const NOTIFICATION_LABEL: Record<string, string> = {
+  escalation: "Escalation",
+  reminder: "Reminder",
+  picked_up: "Picked up",
+  mention: "Mentioned you",
+};
 
 const SOUND_KEY = "wmx-comms:sound";
 const SETTINGS_EVENT = "wmx-comms:alert-settings";
@@ -176,6 +185,37 @@ export function LiveUpdates({
     };
   }, [router, dismiss]);
 
+  /** Escalations, reminders, pick-ups and mentions pop up too (new messages already have their own alert). */
+  const onNotification = useCallback(
+    (n: { id: string; kind: string; title: string; body: string; link: string; urgent: boolean }) => {
+      if (!NOTIFICATION_LABEL[n.kind] || seen.current.has(n.id)) return;
+      seen.current.add(n.id);
+      const toast: Toast = {
+        key: n.id,
+        contactId: "",
+        clientId: "",
+        urgent: n.urgent,
+        headline: NOTIFICATION_LABEL[n.kind],
+        body: n.body,
+        clientName: n.title,
+        businessName: "",
+        link: n.link,
+      };
+      setToasts((list) => [toast, ...list].slice(0, 4));
+      window.setTimeout(() => dismiss(n.id), n.urgent ? 30_000 : 12_000);
+      if (props.current.sound) chime(n.urgent);
+      if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
+        const desk = new Notification(n.title, { body: n.body.slice(0, 180), tag: n.id });
+        desk.onclick = () => {
+          window.focus();
+          router.push(n.link || "/dashboard/escalations");
+          desk.close();
+        };
+      }
+    },
+    [dismiss, router],
+  );
+
   function toggleSound() {
     const next = !sound;
     try {
@@ -195,7 +235,8 @@ export function LiveUpdates({
 
   return (
     <>
-      <div className="space-y-1.5 px-4 pb-3 text-xs">
+      <NotificationBell onIncoming={onNotification} />
+      <div className="space-y-1.5 px-4 pb-3 pt-2 text-xs">
         <p className="flex items-center gap-1.5 text-zinc-500">
           <span
             aria-hidden
@@ -247,11 +288,11 @@ export function LiveUpdates({
             <p className="mt-0.5 text-sm font-semibold text-zinc-900">{t.clientName}</p>
             {t.body && <p className="mt-0.5 line-clamp-2 text-sm text-zinc-600">{t.body}</p>}
             <Link
-              href="/dashboard/queue"
+              href={t.link || "/dashboard/queue"}
               onClick={() => dismiss(t.key)}
               className="mt-2 inline-block text-xs font-semibold text-[#B08D57] hover:underline"
             >
-              Open queue →
+              {t.link ? "Open →" : "Open queue →"}
             </Link>
           </div>
         ))}

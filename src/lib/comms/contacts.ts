@@ -96,6 +96,27 @@ export function escalate(
   );
 }
 
+/** "I've got it": the latest unacknowledged escalation is taken by this person. */
+export function acknowledge(c: ClientContact, byId: string, team: TeamMember[], now = new Date()) {
+  const idx = c.escalations.findLastIndex((e) => !e.acknowledgedAt);
+  if (idx < 0) return c;
+  const name = team.find((t) => t.id === byId)?.name ?? "Someone";
+  const escalations = c.escalations.map((e, i) =>
+    i === idx ? { ...e, acknowledgedById: byId, acknowledgedAt: now.toISOString() } : e,
+  );
+  return withEvent(c, byId, `${name} picked up the escalation`, now, { escalations });
+}
+
+/** True once a contact has reached the reminder threshold and nobody has been reminded yet. */
+export function reminderDue(c: ClientContact, s: SlaSettings, now: Date): boolean {
+  return !c.remindedAt && slaState(c, s, now).stage === "reminder";
+}
+
+/** Escalated and nobody has said "I've got it" yet. */
+export function awaitingPickup(c: ClientContact): boolean {
+  return c.status !== "Resolved" && c.escalations.some((e) => !e.acknowledgedAt);
+}
+
 // ---------- Queue views ----------
 
 export type QueueFilter = 'waiting' | 'overdue' | 'escalate' | 'escalated' | 'client' | 'resolved' | 'all';

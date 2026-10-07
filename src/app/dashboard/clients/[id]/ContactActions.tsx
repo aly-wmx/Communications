@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import type { QueueAction } from "@/lib/validation/queue";
 import { queueAction } from "../../queue/actions";
+import { acknowledgeEscalation } from "../../escalations/actions";
+import { EscalateButton, type EscalationMember } from "../../escalations/EscalateButton";
 
 export interface OpenContact {
   id: string;
@@ -11,10 +13,24 @@ export interface OpenContact {
   summary: string;
   receivedLabel: string;
   assigneeId: string;
+  /** Escalated and nobody has picked it up yet. */
+  awaitingPickup: boolean;
+  /** "Picked up by Reid" once someone has it. */
+  pickedUpLabel: string;
 }
 
 /** The client's open queue items, with the same buttons as the Client Queue. */
-export function ContactActions({ contacts, team }: { contacts: OpenContact[]; team: Array<{ id: string; name: string }> }) {
+export function ContactActions({
+  contacts,
+  team,
+  meId,
+  clientName,
+}: {
+  contacts: OpenContact[];
+  team: EscalationMember[];
+  meId: string;
+  clientName: string;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -24,6 +40,16 @@ export function ContactActions({ contacts, team }: { contacts: OpenContact[]; te
     setPendingId(action.contactId);
     startTransition(async () => {
       const result = await queueAction(action);
+      if (!result.ok) setError(result.error);
+      setPendingId(null);
+    });
+  }
+
+  function pickUp(contactId: string) {
+    setError(null);
+    setPendingId(contactId);
+    startTransition(async () => {
+      const result = await acknowledgeEscalation({ contactId });
       if (!result.ok) setError(result.error);
       setPendingId(null);
     });
@@ -42,6 +68,8 @@ export function ContactActions({ contacts, team }: { contacts: OpenContact[]; te
                 {c.channel} · {c.receivedLabel}
                 {c.status === "Waiting on client" && " · waiting on client"}
               </p>
+              {c.awaitingPickup && <p className="mt-1 text-xs font-semibold text-red-700">Escalated — nobody has picked it up yet</p>}
+              {c.pickedUpLabel && <p className="mt-1 text-xs text-[#3F7A5C]">{c.pickedUpLabel}</p>}
             </div>
             <div className="flex flex-wrap items-center gap-2">
             <select
@@ -67,6 +95,18 @@ export function ContactActions({ contacts, team }: { contacts: OpenContact[]; te
               >
                 Responded
               </button>
+            )}
+            {c.awaitingPickup ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => pickUp(c.id)}
+                className="rounded-md bg-[#3F7A5C] px-2.5 py-1 text-xs font-semibold text-white hover:brightness-110"
+              >
+                I&apos;ve got it
+              </button>
+            ) : (
+              <EscalateButton contactId={c.id} clientName={clientName} team={team} meId={meId} />
             )}
             <button
               type="button"

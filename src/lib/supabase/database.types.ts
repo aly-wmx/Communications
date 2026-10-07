@@ -94,6 +94,7 @@ export type Database = {
           id: string;
           priority: string;
           received_at: string;
+          reminded_at: string | null;
           resolved_at: string | null;
           responded_by_id: string;
           source: string;
@@ -113,6 +114,7 @@ export type Database = {
           id: string;
           priority?: string;
           received_at: string;
+          reminded_at?: string | null;
           resolved_at?: string | null;
           responded_by_id?: string;
           source?: string;
@@ -132,6 +134,7 @@ export type Database = {
           id?: string;
           priority?: string;
           received_at?: string;
+          reminded_at?: string | null;
           resolved_at?: string | null;
           responded_by_id?: string;
           source?: string;
@@ -226,6 +229,66 @@ export type Database = {
           },
         ];
       };
+      notifications: {
+        Row: {
+          attempts: number;
+          body: string;
+          client_id: string | null;
+          contact_id: string | null;
+          created_at: string;
+          delivery_error: string;
+          email_status: string;
+          id: string;
+          kind: string;
+          link: string;
+          read_at: string | null;
+          recipient_id: string;
+          slack_status: string;
+          title: string;
+          urgent: boolean;
+        };
+        Insert: {
+          attempts?: number;
+          body?: string;
+          client_id?: string | null;
+          contact_id?: string | null;
+          created_at?: string;
+          delivery_error?: string;
+          email_status?: string;
+          id?: string;
+          kind: string;
+          link?: string;
+          read_at?: string | null;
+          recipient_id: string;
+          slack_status?: string;
+          title: string;
+          urgent?: boolean;
+        };
+        Update: {
+          attempts?: number;
+          body?: string;
+          client_id?: string | null;
+          contact_id?: string | null;
+          created_at?: string;
+          delivery_error?: string;
+          email_status?: string;
+          id?: string;
+          kind?: string;
+          link?: string;
+          read_at?: string | null;
+          recipient_id?: string;
+          slack_status?: string;
+          title?: string;
+          urgent?: boolean;
+        };
+        Relationships: [];
+      };
+      notification_prefs: {
+        Row: { email: boolean; member_id: string; new_messages: boolean; reminders: boolean; slack: boolean; updated_at: string };
+        Insert: { email?: boolean; member_id: string; new_messages?: boolean; reminders?: boolean; slack?: boolean; updated_at?: string };
+        Update: { email?: boolean; member_id?: string; new_messages?: boolean; reminders?: boolean; slack?: boolean; updated_at?: string };
+        Relationships: [];
+      };
       settings: {
         Row: { id: number; sla: Json; updated_at: string };
         Insert: { id?: number; sla: Json; updated_at?: string };
@@ -237,6 +300,7 @@ export type Database = {
           created_at: string;
           email: string;
           escalation: boolean;
+          ghl_contact_id: string | null;
           id: string;
           name: string;
           phone: string;
@@ -247,6 +311,7 @@ export type Database = {
           created_at?: string;
           email?: string;
           escalation?: boolean;
+          ghl_contact_id?: string | null;
           id: string;
           name: string;
           phone?: string;
@@ -257,6 +322,7 @@ export type Database = {
           created_at?: string;
           email?: string;
           escalation?: boolean;
+          ghl_contact_id?: string | null;
           id?: string;
           name?: string;
           phone?: string;
@@ -286,6 +352,7 @@ export type Database = {
       };
     };
     Functions: {
+      current_member_id: { Args: never; Returns: string };
       current_member_role: { Args: never; Returns: string };
       is_team_member: { Args: never; Returns: boolean };
     };

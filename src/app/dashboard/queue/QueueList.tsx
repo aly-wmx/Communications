@@ -7,6 +7,7 @@ import { formatMinutes, needsEscalation, slaState } from "@/lib/comms/sla";
 import type { ClientContact, SlaSettings } from "@/lib/comms/types";
 import type { QueueAction } from "@/lib/validation/queue";
 import { queueAction } from "./actions";
+import { EscalateButton, type EscalationMember } from "../escalations/EscalateButton";
 
 export interface QueueClient {
   name: string;
@@ -69,7 +70,7 @@ export function QueueList({
   contacts: ClientContact[];
   sla: SlaSettings;
   clients: Record<string, QueueClient>;
-  team: Array<{ id: string; name: string }>;
+  team: EscalationMember[];
   meId: string;
 }) {
   const now = useNow();
@@ -209,6 +210,9 @@ export function QueueList({
                     >
                       Responded
                     </button>
+                  )}
+                  {c.status !== "Resolved" && (
+                    <EscalateButton contactId={c.id} clientName={client?.name ?? "this client"} team={team} meId={meId} highlight={flagged} />
                   )}
                   {c.status !== "Resolved" ? (
                     <button

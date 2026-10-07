@@ -36,7 +36,9 @@ export default async function SettingsPage() {
             <p className="font-medium text-zinc-800">Slack</p>
             <p className="text-xs text-zinc-500">Direct messages for escalations and @mentions.</p>
           </div>
-          <p className="text-xs text-zinc-400">Coming in the next phase</p>
+          <p className={`text-xs font-semibold ${process.env.SLACK_BOT_TOKEN ? "text-[#3F7A5C]" : "text-amber-700"}`}>
+            {process.env.SLACK_BOT_TOKEN ? "Connected" : "Not connected — add SLACK_BOT_TOKEN in Vercel"}
+          </p>
         </div>
       </section>
     </div>
