@@ -35,6 +35,7 @@ export function slaFromJson(json: unknown): SlaSettings {
     ...defaultSla,
     ...s,
     businessHours: { ...defaultSla.businessHours, ...(s.businessHours ?? {}) },
+    timeZone: typeof s.timeZone === "string" ? s.timeZone : "",
   };
 }
 

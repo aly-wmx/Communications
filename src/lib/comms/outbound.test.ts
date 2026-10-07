@@ -56,3 +56,19 @@ describe("clientUpdateSchema", () => {
     expect(clientUpdateSchema.safeParse({ ...base, email: "nope" }).success).toBe(false);
   });
 });
+
+describe("htmlToText", () => {
+  it("keeps the words and line breaks, drops markup", async () => {
+    const { htmlToText } = await import("./outbound");
+    expect(htmlToText("<style>p{}</style><p>Hi Aly,</p><p>Drawings attached&nbsp;&amp; ready.<br>Thanks!</p>")).toBe(
+      "Hi Aly,\nDrawings attached & ready.\nThanks!",
+    );
+  });
+
+  it("removes the quoted earlier conversation", async () => {
+    const { htmlToText } = await import("./outbound");
+    expect(htmlToText("<p>Sounds good.</p><p>On Mon, Oct 5, 2026 at 9:00 AM Aly wrote:</p><blockquote>Old text</blockquote>")).toBe(
+      "Sounds good.",
+    );
+  });
+});

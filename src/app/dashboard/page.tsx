@@ -126,6 +126,12 @@ export default async function OverviewPage() {
                 {backfill.lastError && !backfill.done && ` · paused: ${backfill.lastError}`}
               </span>
             </Check>
+            <Check done={Boolean(sla?.timeZone)}>
+              <Link href="/dashboard/settings" className="hover:underline">
+                Set the business time zone
+              </Link>
+              {!sla?.timeZone && <span className="text-zinc-500"> — wait times use it to count business hours</span>}
+            </Check>
             <Check done={escalation.length > 0}>Choose who receives escalations</Check>
             <Check done={escalation.length > 0 && escalationMissingSlack.length === 0}>
               Add Slack member IDs for escalation recipients

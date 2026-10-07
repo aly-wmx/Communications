@@ -1,5 +1,5 @@
 import { parseGhlPayload, type GhlEvent } from "@/lib/comms/ghl";
-import { businessIdFor, recordGhlEvent, secretOk, serviceDb } from "@/lib/comms/ghl-store";
+import { businessIdFor, recordGhlEvent, serviceDb, webhookSecretOk } from "@/lib/comms/ghl-store";
 
 /**
  * GoHighLevel → client queue (pushed by a GHL workflow, within seconds).
@@ -14,7 +14,7 @@ const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function POST(req: Request): Promise<Response> {
-  if (!secretOk(req, ["x-webhook-secret"])) return json(401, { error: "Unauthorized" });
+  if (!webhookSecretOk(req)) return json(401, { error: "Unauthorized" });
 
   let event: GhlEvent;
   try {
@@ -36,5 +36,5 @@ export async function POST(req: Request): Promise<Response> {
 
 export function GET(req: Request): Response {
   // Lets you check the URL and secret are right without sending data.
-  return secretOk(req, ["x-webhook-secret"]) ? json(200, { ok: true }) : json(401, { error: "Unauthorized" });
+  return webhookSecretOk(req) ? json(200, { ok: true }) : json(401, { error: "Unauthorized" });
 }

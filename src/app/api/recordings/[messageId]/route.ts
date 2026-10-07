@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { ghlConfig } from "@/lib/comms/ghl-api";
-import { secretOk } from "@/lib/comms/ghl-store";
+import { cronSecretOk } from "@/lib/comms/ghl-store";
 import { createClient } from "@/lib/supabase/server";
 import { playableWav } from "@/lib/comms/wav";
 import { audioType as contentType, serveAudio as serve } from "@/lib/comms/audio-response";
@@ -75,7 +75,7 @@ async function playable(res: Response, range: string | null): Promise<Response |
 
 export async function GET(req: NextRequest, ctx: RouteContext<"/api/recordings/[messageId]">) {
   const { messageId } = await ctx.params;
-  const viaSecret = secretOk(req, ["x-sync-secret"]);
+  const viaSecret = cronSecretOk(req);
   const check = viaSecret && req.nextUrl.searchParams.get("check") === "1";
 
   if (!viaSecret) {

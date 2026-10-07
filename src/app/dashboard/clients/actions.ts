@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getSessionMember } from "@/lib/auth";
+import { getSessionMember, requireAdmin } from "@/lib/auth";
 import { ghlConfig, GhlError, updateGhlContact } from "@/lib/comms/ghl-api";
 import { toE164 } from "@/lib/comms/outbound";
 import { createClient } from "@/lib/supabase/server";
@@ -61,5 +61,21 @@ export async function updateClient(input: unknown): Promise<UpdateClientResult> 
       return { ok: true, warning: `Saved here, but not in GoHighLevel: ${why}` };
     }
   }
+  return { ok: true };
+}
+
+/** Admin only: remove a client and their portal history. Nothing is deleted in GoHighLevel. */
+export async function deleteClient(clientId: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+  if (typeof clientId !== "string" || !clientId || clientId.length > 100) return { ok: false, error: "Invalid client." };
+
+  const supabase = await createClient();
+  // RLS also enforces admin-only deletes; the select confirms a row was actually removed.
+  const { data, error } = await supabase.from("clients").delete().eq("id", clientId).select("id");
+  if (error) return { ok: false, error: "Couldn't delete the client." };
+  if (!data?.length) return { ok: false, error: "That client was already removed, or you don't have permission." };
+
+  revalidatePath("/dashboard", "layout");
   return { ok: true };
 }

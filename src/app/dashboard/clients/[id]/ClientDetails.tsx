@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition, type FormEvent } from "react";
-import { updateClient } from "../actions";
+import { useRouter } from "next/navigation";
+import { deleteClient, updateClient } from "../actions";
 
 export interface ClientInfo {
   id: string;
@@ -14,7 +15,16 @@ export interface ClientInfo {
 }
 
 /** Client details in the side panel, with inline editing. */
-export function ClientDetails({ client, team }: { client: ClientInfo; team: Array<{ id: string; name: string }> }) {
+export function ClientDetails({
+  client,
+  team,
+  isAdmin,
+}: {
+  client: ClientInfo;
+  team: Array<{ id: string; name: string }>;
+  isAdmin: boolean;
+}) {
+  const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(client);
   const [message, setMessage] = useState<{ text: string; tone: "error" | "warn" | "ok" } | null>(null);
@@ -36,6 +46,18 @@ export function ClientDetails({ client, team }: { client: ClientInfo; team: Arra
       if (!result.ok) return setMessage({ text: result.error, tone: "error" });
       setEditing(false);
       setMessage(result.warning ? { text: result.warning, tone: "warn" } : { text: "Saved.", tone: "ok" });
+    });
+  }
+
+  function remove() {
+    const ok = window.confirm(
+      `Delete ${client.name} from the portal?\n\nThis removes their conversation history and queue items here. Nothing is deleted in GoHighLevel, and they'll reappear if they message again.`,
+    );
+    if (!ok) return;
+    startTransition(async () => {
+      const result = await deleteClient(client.id);
+      if (!result.ok) return setMessage({ text: result.error, tone: "error" });
+      router.push("/dashboard/clients");
     });
   }
 
@@ -88,7 +110,12 @@ export function ClientDetails({ client, team }: { client: ClientInfo; team: Arra
               {message.text}
             </p>
           )}
-          <div className="flex justify-end gap-2 pt-1">
+          <div className="flex items-center justify-end gap-2 pt-1">
+            {isAdmin && (
+              <button type="button" onClick={remove} disabled={pending} className="mr-auto text-xs text-red-600 hover:underline">
+                Delete client
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setEditing(false)}

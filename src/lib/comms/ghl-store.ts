@@ -20,15 +20,27 @@ export function serviceDb() {
   return createClient<Database>(url, key, { auth: { persistSession: false } });
 }
 
-/** Constant-time check of ?secret= or one of the given headers against GHL_WEBHOOK_SECRET. */
-export function secretOk(req: Request, headerNames: string[]): boolean {
-  const expected = process.env.GHL_WEBHOOK_SECRET ?? "";
+function matches(given: string, expected: string): boolean {
   if (expected.length < 16) return false;
-  const fromHeader = headerNames.map((h) => req.headers.get(h)).find(Boolean);
-  const given = new URL(req.url).searchParams.get("secret") ?? fromHeader ?? "";
   const a = Buffer.from(given);
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** GHL webhook: ?secret= (GHL's basic webhook action can't add headers) or x-webhook-secret, against GHL_WEBHOOK_SECRET. */
+export function webhookSecretOk(req: Request): boolean {
+  const given = req.headers.get("x-webhook-secret") ?? new URL(req.url).searchParams.get("secret") ?? "";
+  return matches(given, process.env.GHL_WEBHOOK_SECRET ?? "");
+}
+
+/**
+ * Scheduled jobs and server checks: header x-sync-secret against CRON_SECRET.
+ * Until CRON_SECRET is set in Vercel, GHL_WEBHOOK_SECRET is still accepted so the jobs keep running.
+ */
+export function cronSecretOk(req: Request): boolean {
+  const given = req.headers.get("x-sync-secret") ?? "";
+  const cron = process.env.CRON_SECRET ?? "";
+  return cron ? matches(given, cron) : matches(given, process.env.GHL_WEBHOOK_SECRET ?? "");
 }
 
 /** The business new clients go to: the one asked for if it exists, otherwise the oldest (Watermark). */

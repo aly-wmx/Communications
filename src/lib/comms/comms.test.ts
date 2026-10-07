@@ -153,3 +153,36 @@ describe('formatMinutes', () => {
     expect(formatMinutes(60 * 26)).toBe('1d 2h');
   });
 });
+
+describe('business hours in a time zone', () => {
+  const hoursLA = { enabled: true, start: '08:00', end: '17:00', days: [1, 2, 3, 4, 5] };
+
+  it('counts on the business clock, not the computer clock', () => {
+    // Mon 5 Oct 2026, 9:00–10:00 in Los Angeles = 16:00–17:00 UTC.
+    const from = new Date('2026-10-05T16:00:00Z');
+    const to = new Date('2026-10-05T17:00:00Z');
+    expect(businessMinutesBetween(from, to, hoursLA, 'America/Los_Angeles')).toBe(60);
+    // The same hour is 1–2am in Manila: outside business hours there.
+    expect(businessMinutesBetween(from, to, hoursLA, 'Asia/Manila')).toBe(0);
+  });
+
+  it('skips evenings and weekends in that zone', () => {
+    // Fri 9 Oct 4pm LA → Mon 12 Oct 9am LA = 1h Friday + 1h Monday.
+    expect(
+      businessMinutesBetween(new Date('2026-10-09T23:00:00Z'), new Date('2026-10-12T16:00:00Z'), hoursLA, 'America/Los_Angeles'),
+    ).toBe(120);
+  });
+
+  it('handles the daylight-saving change', () => {
+    // Mon 2 Nov 2026 (after clocks go back): 8am LA = 16:00 UTC.
+    expect(
+      businessMinutesBetween(new Date('2026-11-02T16:00:00Z'), new Date('2026-11-02T17:00:00Z'), hoursLA, 'America/Los_Angeles'),
+    ).toBe(60);
+  });
+
+  it('flows through slaState', () => {
+    const s = { ...defaultSla, timeZone: 'America/Los_Angeles' };
+    const c = contact('2026-10-05T16:00:00.000Z'); // 9am LA Monday
+    expect(slaState(c, s, new Date('2026-10-05T17:00:00Z')).waitedMinutes).toBe(60);
+  });
+});

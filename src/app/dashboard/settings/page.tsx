@@ -1,18 +1,44 @@
-import { ComingSoon } from "@/components/ComingSoon";
+import { PageHeader } from "@/components/PageHeader";
 import { requireAdminPage } from "@/lib/auth";
+import { slaFromJson } from "@/lib/comms/rows";
+import { createClient } from "@/lib/supabase/server";
+import { SlaForm } from "./SlaForm";
 
 export default async function SettingsPage() {
   await requireAdminPage();
+  const supabase = await createClient();
+  const [{ data: settings }, { data: team }, { data: sync }] = await Promise.all([
+    supabase.from("settings").select("sla").eq("id", 1).maybeSingle(),
+    supabase.from("team_members").select("id, name, escalation").order("name"),
+    supabase.from("integration_state").select("value").eq("key", "ghl_sync").maybeSingle(),
+  ]);
+  const ghl = (sync?.value ?? {}) as { lastOkAt?: string; lastError?: string };
+
   return (
-    <ComingSoon
-      title="Settings"
-      description="The escalation matrix and connections to other tools."
-      phase={3}
-      features={[
-        "Escalation matrix: reminder and escalation times, urgent fast-track, business hours",
-        "Slack connection for escalation alerts",
-        "GoHighLevel connection status: last message received, lag warning",
-      ]}
-    />
+    <div className="space-y-6">
+      <PageHeader title="Settings" description="Response-time targets, business hours, and connections to other tools." />
+      <SlaForm initial={slaFromJson(settings?.sla)} team={team ?? []} />
+
+      <section className="max-w-3xl space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
+        <h2 className="text-sm font-semibold text-zinc-900">Connections</h2>
+        <div className="flex items-start justify-between gap-4 text-sm">
+          <div>
+            <p className="font-medium text-zinc-800">GoHighLevel</p>
+            <p className="text-xs text-zinc-500">Messages sync every minute; replies and new conversations send through GHL.</p>
+          </div>
+          <p className={`text-xs font-semibold ${ghl.lastOkAt && !ghl.lastError ? "text-[#3F7A5C]" : "text-amber-700"}`}>
+            {ghl.lastOkAt ? `Last synced ${new Date(ghl.lastOkAt).toLocaleString()}` : "Not synced yet"}
+            {ghl.lastError ? ` · ${ghl.lastError}` : ""}
+          </p>
+        </div>
+        <div className="flex items-start justify-between gap-4 text-sm">
+          <div>
+            <p className="font-medium text-zinc-800">Slack</p>
+            <p className="text-xs text-zinc-500">Direct messages for escalations and @mentions.</p>
+          </div>
+          <p className="text-xs text-zinc-400">Coming in the next phase</p>
+        </div>
+      </section>
+    </div>
   );
 }

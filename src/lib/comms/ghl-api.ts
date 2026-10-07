@@ -198,3 +198,28 @@ export async function updateGhlContact(
     );
   }
 }
+
+/**
+ * The text of an email message. GHL lists emails without their body; it lives
+ * behind the email endpoint, keyed by the email id(s) in the message's meta.
+ */
+export async function fetchEmailText(token: string, messageId: string, htmlToText: (h: string) => string): Promise<string> {
+  const detail = (await ghlGet(`/conversations/messages/${encodeURIComponent(messageId)}`, token)) as {
+    message?: { meta?: { email?: { messageIds?: string[] } } };
+    meta?: { email?: { messageIds?: string[] } };
+  };
+  const meta = detail.message?.meta ?? detail.meta;
+  const emailIds = meta?.email?.messageIds?.length ? meta.email.messageIds : [messageId];
+  for (const id of emailIds.slice(-1)) {
+    const res = (await ghlGet(`/conversations/messages/email/${encodeURIComponent(id)}`, token)) as {
+      emailMessage?: { body?: string; subject?: string };
+      body?: string;
+      subject?: string;
+    };
+    const email = res.emailMessage ?? res;
+    const text = htmlToText(email.body ?? "");
+    const subject = (email.subject ?? "").trim();
+    if (text || subject) return [subject, text].filter(Boolean).join("\n\n").slice(0, 5000);
+  }
+  return "";
+}

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getSessionMember } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { ChatThread, type ChatMessage } from "./ChatThread";
 import { ClientDetails } from "./ClientDetails";
@@ -24,6 +25,7 @@ export default async function ClientThreadPage({ params, searchParams }: PagePro
   const beforeRaw = typeof sp.before === "string" ? sp.before : "";
   const before = beforeRaw && !Number.isNaN(Date.parse(beforeRaw)) ? new Date(beforeRaw).toISOString() : "";
   const supabase = await createClient();
+  const me = await getSessionMember();
 
   let threadQuery = supabase
     .from("messages")
@@ -81,7 +83,7 @@ export default async function ClientThreadPage({ params, searchParams }: PagePro
   const waiting = openContacts.some((c) => c.status === "Open");
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] flex-col gap-4">
+    <div className="flex h-[calc(100dvh-6.5rem)] flex-col gap-4 lg:h-[calc(100dvh-3rem)]">
       <Link href="/dashboard/clients" className="text-xs font-semibold text-[#B08D57] hover:underline">
         ← Clients
       </Link>
@@ -143,6 +145,7 @@ export default async function ClientThreadPage({ params, searchParams }: PagePro
               notes: client.notes,
             }}
             team={team ?? []}
+            isAdmin={me?.role === "admin"}
           />
 
           {openContacts.length > 0 ? (

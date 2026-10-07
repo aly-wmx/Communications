@@ -1,6 +1,6 @@
 import { eventFromApiMessage, messageRecordFromApi, toMillis, unansweredTail, type GhlApiConversation, type MessageRecord } from "@/lib/comms/ghl";
 import { conversationMessages, ghlConfig, GhlError, searchConversations } from "@/lib/comms/ghl-api";
-import { businessIdFor, ensureClient, recordGhlEvent, secretOk, serviceDb, storeMessages, type Db } from "@/lib/comms/ghl-store";
+import { businessIdFor, cronSecretOk, ensureClient, recordGhlEvent, serviceDb, storeMessages, type Db } from "@/lib/comms/ghl-store";
 import type { Json } from "@/lib/supabase/database.types";
 
 /**
@@ -55,7 +55,7 @@ async function save(sb: Db, state: BackfillState) {
 }
 
 async function run(req: Request): Promise<Response> {
-  if (!secretOk(req, ["x-sync-secret", "x-webhook-secret"])) return json(401, { error: "Unauthorized" });
+  if (!cronSecretOk(req)) return json(401, { error: "Unauthorized" });
   const { token, locationId, missing } = ghlConfig();
   if (missing.length) return json(500, { ok: false, error: `Missing in Vercel: ${missing.join(", ")}` });
 

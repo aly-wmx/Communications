@@ -98,4 +98,6 @@ export interface SlaSettings {
   businessHours: BusinessHours;
   /** Default assignee for new contacts when the client has no owner. */
   defaultAssigneeId: string;
+  /** IANA zone the business hours are in, e.g. "America/Los_Angeles". Empty until an admin sets it. */
+  timeZone?: string;
 }

@@ -9,6 +9,7 @@ import { signOut } from "./actions";
 import { BusinessSwitcher } from "./BusinessSwitcher";
 import { DashboardNav } from "./DashboardNav";
 import { LiveUpdates } from "./LiveUpdates";
+import { SidebarShell } from "./SidebarShell";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -32,12 +33,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
-    <div className="flex min-h-screen bg-[#F5F3EE]">
-      <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-zinc-200 bg-white">
-        <div className="border-b border-zinc-200 px-4 py-4">
-          <WmxWordmark />
-        </div>
-
+    <div className="min-h-screen bg-[#F5F3EE] lg:flex">
+      <SidebarShell brand={<WmxWordmark />}>
         {current && <BusinessSwitcher businesses={businesses} currentId={current.id} />}
 
         <DashboardNav role={member.role} queueBadge={needsEscalation} />
@@ -64,9 +61,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </button>
           </form>
         </div>
-      </aside>
+      </SidebarShell>
 
-      <main className="min-w-0 flex-1 overflow-x-auto px-6 py-6">{children}</main>
+      <main className="min-w-0 flex-1 overflow-x-auto px-4 py-4 sm:px-6 sm:py-6">{children}</main>
     </div>
   );
 }
