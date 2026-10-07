@@ -156,3 +156,45 @@ export async function upsertGhlContact(
   if (!id) throw new GhlError(500, "GoHighLevel didn't return a contact.");
   return { id };
 }
+
+/** Update a GHL contact's name, phone and email to match the portal. */
+export async function updateGhlContact(
+  token: string,
+  contactId: string,
+  who: { name: string; phone: string; email: string },
+): Promise<void> {
+  const [firstName, ...rest] = who.name.trim().split(/\s+/);
+  const res = await fetch(`${GHL}/contacts/${encodeURIComponent(contactId)}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Version: "2021-07-28",
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: who.name.trim(),
+      firstName: firstName ?? "",
+      lastName: rest.join(" "),
+      // GHL rejects empty strings for these; leave a cleared field unchanged there.
+      ...(who.phone ? { phone: who.phone } : {}),
+      ...(who.email ? { email: who.email } : {}),
+    }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const j = (await res.json()) as { message?: unknown };
+      detail = Array.isArray(j.message) ? j.message.join("; ") : typeof j.message === "string" ? j.message : "";
+    } catch {
+      // Not JSON.
+    }
+    throw new GhlError(
+      res.status,
+      res.status === 403
+        ? "The GoHighLevel Private Integration needs the contacts.write scope."
+        : `GoHighLevel didn't accept the change${detail ? `: ${detail}` : ` (error ${res.status})`}.`,
+    );
+  }
+}

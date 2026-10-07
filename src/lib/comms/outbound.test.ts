@@ -46,3 +46,13 @@ describe("messaging schemas", () => {
     expect(newConversationSchema.safeParse({ ...base, channel: "Email", subject: "Hi", email: "nope" }).success).toBe(false);
   });
 });
+
+describe("clientUpdateSchema", () => {
+  it("normalises email and requires a name", async () => {
+    const { clientUpdateSchema } = await import("@/lib/validation/clients");
+    const base = { clientId: "cl_1", name: "Maria", project: "", phone: "", email: " Maria@Example.COM ", ownerId: "", notes: "" };
+    expect(clientUpdateSchema.parse(base).email).toBe("maria@example.com");
+    expect(clientUpdateSchema.safeParse({ ...base, name: " " }).success).toBe(false);
+    expect(clientUpdateSchema.safeParse({ ...base, email: "nope" }).success).toBe(false);
+  });
+});

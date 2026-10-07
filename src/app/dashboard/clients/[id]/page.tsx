@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ChatThread, type ChatMessage } from "./ChatThread";
+import { ClientDetails } from "./ClientDetails";
 import { Composer } from "./Composer";
 import { ContactActions, type OpenContact } from "./ContactActions";
 
@@ -33,7 +34,7 @@ export default async function ClientThreadPage({ params, searchParams }: PagePro
   if (before) threadQuery = threadQuery.lt("occurred_at", before);
 
   const [{ data: client }, { data: newest }, { count }, { data: open }, { data: team }] = await Promise.all([
-    supabase.from("clients").select("id, name, project, phone, email, owner_id").eq("id", id).maybeSingle(),
+    supabase.from("clients").select("id, name, project, phone, email, owner_id, notes").eq("id", id).maybeSingle(),
     threadQuery,
     supabase.from("messages").select("id", { count: "exact", head: true }).eq("client_id", id),
     supabase
@@ -78,7 +79,6 @@ export default async function ClientThreadPage({ params, searchParams }: PagePro
     assigneeId: c.assignee_id ?? "",
   }));
   const waiting = openContacts.some((c) => c.status === "Open");
-  const owner = (team ?? []).find((t) => t.id === client.owner_id)?.name;
 
   return (
     <div className="flex h-[calc(100vh-3rem)] flex-col gap-4">
@@ -132,22 +132,18 @@ export default async function ClientThreadPage({ params, searchParams }: PagePro
 
         {/* Side panel */}
         <aside className="w-full shrink-0 space-y-4 overflow-y-auto lg:w-80">
-          <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Client</h2>
-            <dl className="mt-2 space-y-1.5 text-sm">
-              {[
-                ["Project", client.project],
-                ["Phone", client.phone],
-                ["Email", client.email],
-                ["Owner", owner],
-              ].map(([label, value]) => (
-                <div key={label} className="flex gap-2">
-                  <dt className="w-16 shrink-0 text-zinc-500">{label}</dt>
-                  <dd className="min-w-0 break-words text-zinc-800">{value || <span className="text-zinc-400">—</span>}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
+          <ClientDetails
+            client={{
+              id: client.id,
+              name: client.name,
+              project: client.project,
+              phone: client.phone,
+              email: client.email,
+              ownerId: client.owner_id ?? "",
+              notes: client.notes,
+            }}
+            team={team ?? []}
+          />
 
           {openContacts.length > 0 ? (
             <ContactActions contacts={openContacts} team={team ?? []} />
