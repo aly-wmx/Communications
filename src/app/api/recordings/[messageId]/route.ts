@@ -2,6 +2,8 @@ import type { NextRequest } from "next/server";
 import { ghlConfig } from "@/lib/comms/ghl-api";
 import { secretOk } from "@/lib/comms/ghl-store";
 import { createClient } from "@/lib/supabase/server";
+import { playableWav } from "@/lib/comms/wav";
+import { audioType as contentType, serveAudio as serve } from "@/lib/comms/audio-response";
 
 /**
  * Streams a voicemail or call recording from GoHighLevel to the portal's audio player.
@@ -9,6 +11,10 @@ import { createClient } from "@/lib/supabase/server";
  * GHL keeps audio in one of two places: call recordings at the message's
  * /recording endpoint, and (often) voicemails as an audio attachment on the
  * message itself. Try the first, then fall back to the second.
+ *
+ * The audio is downloaded in full, converted if it's telephone-format WAV
+ * (which Chrome and Safari can't play), and served with a size and byte-range
+ * support so every browser can play and seek it.
  *
  * Signed-in team members only (the message lookup goes through RLS). The server
  * cron secret also works, with ?check=1, to report what GHL returns — status
@@ -18,8 +24,8 @@ import { createClient } from "@/lib/supabase/server";
 const GHL = "https://services.leadconnectorhq.com";
 const AUDIO_EXT = /\.(mp3|wav|m4a|ogg|webm|aac|amr|3gp)(\?|$)/i;
 
-function ghlHeaders(token: string, range?: string | null): HeadersInit {
-  return { Authorization: `Bearer ${token}`, Version: "2021-04-15", ...(range ? { Range: range } : {}) };
+function ghlHeaders(token: string): HeadersInit {
+  return { Authorization: `Bearer ${token}`, Version: "2021-04-15" };
 }
 
 const isAudio = (res: Response) => {
@@ -49,19 +55,22 @@ async function messageDetails(token: string, messageId: string): Promise<Record<
   return (body.message as Record<string, unknown>) ?? body;
 }
 
-function stream(upstream: Response): Response {
-  const headers = new Headers({
-    "Content-Type": upstream.headers.get("content-type")?.startsWith("audio/")
-      ? upstream.headers.get("content-type")!
-      : "audio/mpeg",
-    "Cache-Control": "private, max-age=3600",
-    "Accept-Ranges": upstream.headers.get("accept-ranges") ?? "bytes",
-  });
-  for (const h of ["content-length", "content-range"]) {
-    const v = upstream.headers.get(h);
-    if (v) headers.set(h, v);
-  }
-  return new Response(upstream.body, { status: upstream.status, headers });
+const MAX_BYTES = 30 * 1024 * 1024;
+
+/** Download the whole recording (voicemails are small) so we can fix the format and answer range requests. */
+async function download(res: Response): Promise<Uint8Array | null> {
+  const declared = Number(res.headers.get("content-length") ?? 0);
+  if (declared > MAX_BYTES) return null;
+  const buf = new Uint8Array(await res.arrayBuffer());
+  return buf.length > 0 && buf.length <= MAX_BYTES ? buf : null;
+}
+
+async function playable(res: Response, range: string | null): Promise<Response | null> {
+  const raw = await download(res);
+  if (!raw) return null;
+  const type = contentType(raw, res.headers.get("content-type"));
+  if (type !== "audio/wav") return serve(raw, type, range);
+  return serve(playableWav(raw).bytes, "audio/wav", range);
 }
 
 export async function GET(req: NextRequest, ctx: RouteContext<"/api/recordings/[messageId]">) {
@@ -82,19 +91,27 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/recordings/[
   // 1) The call-recording endpoint.
   const recording = await fetch(
     `${GHL}/conversations/messages/${encodeURIComponent(messageId)}/locations/${encodeURIComponent(locationId)}/recording`,
-    { headers: ghlHeaders(token, check ? null : range), cache: "no-store" },
+    { headers: ghlHeaders(token), cache: "no-store" },
   );
   const recordingOk = (recording.ok || recording.status === 206) && isAudio(recording);
 
   if (check) {
     const details = await messageDetails(token, messageId);
     const urls = details ? audioUrls(details) : [];
-    void recording.body?.cancel();
+    const raw = recordingOk ? await download(recording) : null;
+    if (!raw) void recording.body?.cancel();
+    const fixed = raw ? playableWav(raw) : null;
     return Response.json({
       recordingEndpoint: {
         status: recording.status,
         contentType: recording.headers.get("content-type"),
         length: recording.headers.get("content-length"),
+        bytes: raw?.length ?? null,
+        detectedType: raw ? contentType(raw, recording.headers.get("content-type")) : null,
+        wav: fixed?.info
+          ? { format: fixed.info.format, channels: fixed.info.channels, sampleRate: fixed.info.sampleRate, bitsPerSample: fixed.info.bitsPerSample }
+          : null,
+        convertedForBrowsers: fixed?.converted ?? false,
       },
       messageFound: Boolean(details),
       messageFields: details ? Object.keys(details).sort() : [],
@@ -104,17 +121,25 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/recordings/[
     });
   }
 
-  if (recordingOk) return stream(recording);
-  void recording.body?.cancel();
+  if (recordingOk) {
+    const res = await playable(recording, range);
+    if (res) return res;
+  } else {
+    void recording.body?.cancel();
+  }
 
   // 2) An audio attachment on the message (typical for voicemails).
   const details = await messageDetails(token, messageId);
   for (const url of details ? audioUrls(details) : []) {
     // Links on GHL's own storage are usually public; try with and without the API key.
-    for (const headers of [range ? { Range: range } : undefined, ghlHeaders(token, range)]) {
+    for (const headers of [undefined, ghlHeaders(token)]) {
       const res = await fetch(url, { headers, cache: "no-store" });
-      if ((res.ok || res.status === 206) && isAudio(res)) return stream(res);
-      void res.body?.cancel();
+      if (res.ok && isAudio(res)) {
+        const out = await playable(res, range);
+        if (out) return out;
+      } else {
+        void res.body?.cancel();
+      }
     }
   }
 
