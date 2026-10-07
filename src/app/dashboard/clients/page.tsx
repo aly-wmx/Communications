@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { getBusinessContext } from "@/lib/business";
 import { formatMinutes } from "@/lib/comms/sla";
 import { createClient } from "@/lib/supabase/server";
+import { NewConversation } from "./NewConversation";
 
 const PAGE_SIZE = 50;
 
@@ -16,7 +17,8 @@ const likeSafe = (v: string) => v.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 export default async function ClientsPage({ searchParams }: PageProps<"/dashboard/clients">) {
   const params = await searchParams;
-  const q = typeof params.q === "string" ? params.q.trim().slice(0, 80) : "";
+  // Quotes, commas and brackets would break the filter syntax; they never matter for a client search.
+  const q = typeof params.q === "string" ? params.q.replace(/[",()]/g, " ").trim().slice(0, 80) : "";
   const page = Math.max(1, Number(typeof params.page === "string" ? params.page : 1) || 1);
   const waitingOnly = params.waiting === "1";
 
@@ -48,8 +50,10 @@ export default async function ClientsPage({ searchParams }: PageProps<"/dashboar
     <div className="space-y-6">
       <PageHeader
         title="Clients"
-        description="Every client and their full conversation history from GoHighLevel. Open a client to read the thread."
-      />
+        description="Every client and their full conversation history from GoHighLevel. Open a client to read and reply."
+      >
+        <NewConversation />
+      </PageHeader>
 
       <form className="flex flex-wrap items-center gap-2">
         <input

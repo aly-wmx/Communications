@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { RecordingPlayer } from "./RecordingPlayer";
 
 export interface ChatMessage {
   id: string;
@@ -137,7 +138,7 @@ export function ChatThread({
                   {isCall ? (
                     <div className="flex justify-center py-1.5">
                       <span
-                        className={`rounded-full px-3 py-1 text-xs ${
+                        className={`flex flex-wrap items-center justify-center gap-2 rounded-2xl px-3 py-1 text-xs ${
                           m.channel === "Missed call"
                             ? "bg-red-50 font-semibold text-red-700"
                             : m.channel === "Voicemail"
@@ -145,7 +146,13 @@ export function ChatThread({
                               : "bg-white text-zinc-600 shadow-sm"
                         }`}
                       >
-                        {m.channel === "Voicemail" ? "📼" : out ? "↗" : "📞"} {m.body} · {time(m.occurredAt)}
+                        <span>
+                          {m.channel === "Voicemail" ? "📼" : out ? "↗" : "📞"} {m.body} · {time(m.occurredAt)}
+                        </span>
+                        {m.channel === "Voicemail" && <RecordingPlayer messageId={m.id} label="Play voicemail" />}
+                        {m.channel === "Call" && /completed|answered/i.test(m.body) && (
+                          <RecordingPlayer messageId={m.id} label="Recording" />
+                        )}
                       </span>
                     </div>
                   ) : (

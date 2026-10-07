@@ -1,0 +1,197 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { getSessionMember, type SessionMember } from "@/lib/auth";
+import { getBusinessContext } from "@/lib/business";
+import { markResponded } from "@/lib/comms/contacts";
+import { ghlConfig, GhlError, sendGhlMessage, upsertGhlContact } from "@/lib/comms/ghl-api";
+import { ensureClient, serviceDb, type Db } from "@/lib/comms/ghl-store";
+import { textToHtml, toE164 } from "@/lib/comms/outbound";
+import { contactFromRow, contactPatch } from "@/lib/comms/rows";
+import { createClient } from "@/lib/supabase/server";
+import { newConversationSchema, replySchema } from "@/lib/validation/messaging";
+
+export type SendResult = { ok: true; clientId: string } | { ok: false; error: string };
+
+interface ClientForSend {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  ghl_contact_id: string | null;
+}
+
+/** Make sure the client exists as a GHL contact, creating it if needed, and remember the id. */
+async function ghlContactFor(sb: Db, client: ClientForSend, token: string, locationId: string): Promise<string> {
+  if (client.ghl_contact_id) return client.ghl_contact_id;
+  const phone = toE164(client.phone);
+  if (!phone && !client.email) throw new GhlError(400, "This client has no phone number or email to send to.");
+  const { id } = await upsertGhlContact(token, locationId, { name: client.name, phone, email: client.email });
+  await sb.from("clients").update({ ghl_contact_id: id }).eq("id", client.id);
+  return id;
+}
+
+/**
+ * Send through GHL, then record it straight away: on the thread (so it shows
+ * instantly), as handled for the sync (so it isn't double-counted), and as a
+ * response on any contact waiting on us.
+ */
+async function sendAndRecord(
+  sb: Db,
+  me: SessionMember,
+  client: ClientForSend,
+  input: { channel: "SMS" | "Email"; subject?: string; message: string },
+): Promise<void> {
+  const { token, locationId, missing } = ghlConfig();
+  if (missing.length) throw new GhlError(500, `Sending needs ${missing.join(" and ")} in Vercel.`);
+
+  if (input.channel === "SMS" && !toE164(client.phone) && !client.ghl_contact_id) {
+    throw new GhlError(400, "This client has no valid phone number for texts.");
+  }
+  if (input.channel === "Email" && !client.email && !client.ghl_contact_id) {
+    throw new GhlError(400, "This client has no email address.");
+  }
+
+  const contactId = await ghlContactFor(sb, client, token, locationId);
+  const sent = await sendGhlMessage(token, {
+    type: input.channel,
+    contactId,
+    message: input.message,
+    subject: input.subject,
+    html: input.channel === "Email" ? textToHtml(input.message) : undefined,
+  });
+
+  const now = new Date();
+  const messageId = sent.messageId || `portal_${now.getTime()}_${client.id}`;
+  const body = input.channel === "Email" && input.subject ? `${input.subject}\n\n${input.message}` : input.message;
+
+  await Promise.all([
+    sb.from("messages").upsert(
+      {
+        id: messageId,
+        client_id: client.id,
+        conversation_id: sent.conversationId,
+        direction: "outbound",
+        channel: input.channel === "SMS" ? "Text" : "Email",
+        body: body.slice(0, 5000),
+        status: "sent",
+        sent_by_user: true,
+        source: `portal:${me.name}`,
+        occurred_at: now.toISOString(),
+      },
+      { onConflict: "id", ignoreDuplicates: true },
+    ),
+    sent.messageId
+      ? sb.from("ghl_messages").upsert({ id: sent.messageId, direction: "outbound" }, { onConflict: "id", ignoreDuplicates: true })
+      : Promise.resolve(),
+  ]);
+
+  // Replying answers whatever the client was waiting on.
+  const { data: open } = await sb.from("contacts").select("*").eq("client_id", client.id).eq("status", "Open");
+  for (const row of open ?? []) {
+    const next = markResponded(contactFromRow(row), me.memberId, now);
+    await sb.from("contacts").update(contactPatch(next)).eq("id", row.id);
+  }
+}
+
+function failure(err: unknown): { ok: false; error: string } {
+  if (err instanceof GhlError) return { ok: false, error: err.message };
+  console.error("send failed", err);
+  return { ok: false, error: "Couldn't send the message. Try again, or send it from GoHighLevel." };
+}
+
+export async function sendReply(input: unknown): Promise<SendResult> {
+  const me = await getSessionMember();
+  if (!me) return { ok: false, error: "You're not signed in as a team member." };
+  const parsed = replySchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid message." };
+  const { clientId, ...msg } = parsed.data;
+
+  // Read with the signed-in user's access (RLS), then write with the server's.
+  const supabase = await createClient();
+  const { data: client } = await supabase.from("clients").select("id, name, phone, email, ghl_contact_id").eq("id", clientId).maybeSingle();
+  if (!client) return { ok: false, error: "That client no longer exists." };
+
+  try {
+    await sendAndRecord(serviceDb(), me, client, msg);
+  } catch (err) {
+    return failure(err);
+  }
+  revalidatePath(`/dashboard/clients/${client.id}`);
+  revalidatePath("/dashboard", "layout");
+  return { ok: true, clientId: client.id };
+}
+
+export async function startConversation(input: unknown): Promise<SendResult> {
+  const me = await getSessionMember();
+  if (!me) return { ok: false, error: "You're not signed in as a team member." };
+  const parsed = newConversationSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the form." };
+  const v = parsed.data;
+
+  const supabase = await createClient();
+  const sb = serviceDb();
+  let client: ClientForSend | null;
+
+  try {
+    if (v.mode === "existing") {
+      const { data } = await supabase.from("clients").select("id, name, phone, email, ghl_contact_id").eq("id", v.clientId).maybeSingle();
+      client = data;
+      if (!client) return { ok: false, error: "That client no longer exists." };
+    } else {
+      const phone = v.phone ? toE164(v.phone) : "";
+      if (v.phone && !phone) return { ok: false, error: "That phone number doesn't look right. Include the area code." };
+      const { current } = await getBusinessContext();
+      if (!current) return { ok: false, error: "Add a business first." };
+
+      const { token, locationId, missing } = ghlConfig();
+      if (missing.length) return { ok: false, error: `Sending needs ${missing.join(" and ")} in Vercel.` };
+      // GHL finds an existing contact with this phone/email instead of duplicating it.
+      const { id: ghlContactId } = await upsertGhlContact(token, locationId, { name: v.name, phone, email: v.email });
+      const row = await ensureClient(sb, { ghlContactId, name: v.name, phone, email: v.email }, current.id);
+      if (v.project) await sb.from("clients").update({ project: v.project }).eq("id", row.id).eq("project", "");
+      client = { id: row.id, name: row.name, phone: row.phone || phone, email: row.email || v.email, ghl_contact_id: ghlContactId };
+    }
+
+    await sendAndRecord(sb, me, client, v);
+  } catch (err) {
+    return failure(err);
+  }
+  revalidatePath("/dashboard/clients");
+  return { ok: true, clientId: client.id };
+}
+
+export interface ClientPick {
+  id: string;
+  name: string;
+  detail: string;
+  hasPhone: boolean;
+  hasEmail: boolean;
+}
+
+/** Type-ahead for "New conversation": clients in the current business matching a name, phone or email. */
+export async function searchClients(query: string): Promise<ClientPick[]> {
+  const me = await getSessionMember();
+  // Quotes, commas and brackets would break the filter syntax; they never matter for a name/phone search.
+  const q = typeof query === "string" ? query.replace(/[",()]/g, " ").trim().slice(0, 80) : "";
+  if (!me || q.length < 2) return [];
+  const { current } = await getBusinessContext();
+  if (!current) return [];
+
+  const term = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("clients")
+    .select("id, name, phone, email, project")
+    .eq("business_id", current.id)
+    .or(`name.ilike."${term}",phone.ilike."${term}",email.ilike."${term}"`)
+    .order("name")
+    .limit(8);
+  return (data ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    detail: [c.project, c.phone, c.email].filter(Boolean).join(" · "),
+    hasPhone: Boolean(c.phone),
+    hasEmail: Boolean(c.email),
+  }));
+}

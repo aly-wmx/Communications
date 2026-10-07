@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ChatThread, type ChatMessage } from "./ChatThread";
+import { Composer } from "./Composer";
 import { ContactActions, type OpenContact } from "./ContactActions";
 
 const PAGE_SIZE = 300;
@@ -126,19 +127,7 @@ export default async function ClientThreadPage({ params, searchParams }: PagePro
 
           <ChatThread messages={messages} clientName={client.name} olderHref={olderHref} newerHref={newerHref} />
 
-          <footer className="border-t border-zinc-200 bg-white px-4 py-2.5 text-center text-xs text-zinc-500">
-            {ghlHref ? (
-              <>
-                Replies are sent from{" "}
-                <a href={ghlHref} target="_blank" rel="noreferrer" className="font-semibold text-[#B08D57] hover:underline">
-                  GoHighLevel
-                </a>{" "}
-                and appear here within a minute.
-              </>
-            ) : (
-              "Replies sent from GoHighLevel appear here within a minute."
-            )}
-          </footer>
+          <Composer clientId={client.id} hasPhone={Boolean(client.phone)} hasEmail={Boolean(client.email)} />
         </section>
 
         {/* Side panel */}

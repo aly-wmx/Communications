@@ -71,3 +71,88 @@ export async function conversationMessages(token: string, conversationId: string
 }
 
 export type { GhlApiConversation, GhlApiMessage };
+
+// ---------- Sending (replies and new conversations) ----------
+
+async function ghlPost(path: string, token: string, body: unknown, version: string, scopeHint: string): Promise<unknown> {
+  const res = await fetch(`${GHL}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Version: version,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    // GHL's own message is usually specific ("Invalid phone number", "Contact is DND for SMS").
+    let detail = "";
+    try {
+      const j = (await res.json()) as { message?: unknown };
+      detail = Array.isArray(j.message) ? j.message.join("; ") : typeof j.message === "string" ? j.message : "";
+    } catch {
+      // Not JSON; fall back to the status hint.
+    }
+    const hint =
+      res.status === 401
+        ? "GoHighLevel rejected the API key."
+        : res.status === 403
+          ? `The GoHighLevel Private Integration needs the ${scopeHint} scope.`
+          : res.status === 429
+            ? "GoHighLevel is rate-limiting; try again in a moment."
+            : `GoHighLevel couldn't send it${detail ? `: ${detail}` : ` (error ${res.status})`}.`;
+    throw new GhlError(res.status, res.status === 400 || res.status === 422 ? hint : detail && res.status !== 403 ? `${hint} ${detail}` : hint);
+  }
+  return res.json();
+}
+
+export interface SendInput {
+  type: "SMS" | "Email";
+  contactId: string;
+  message: string;
+  subject?: string;
+  html?: string;
+}
+
+/** Send a text or email to a GHL contact; GHL starts a conversation if there isn't one. */
+export async function sendGhlMessage(token: string, input: SendInput): Promise<{ messageId: string; conversationId: string }> {
+  const body =
+    input.type === "SMS"
+      ? { type: "SMS", contactId: input.contactId, message: input.message }
+      : { type: "Email", contactId: input.contactId, subject: input.subject, html: input.html, message: input.message };
+  const res = (await ghlPost("/conversations/messages", token, body, "2021-04-15", "conversations/message.write")) as {
+    messageId?: string;
+    conversationId?: string;
+    emailMessageId?: string;
+  };
+  return { messageId: res.messageId ?? res.emailMessageId ?? "", conversationId: res.conversationId ?? "" };
+}
+
+/** Create the contact in GHL, or return the existing one with the same phone/email. */
+export async function upsertGhlContact(
+  token: string,
+  locationId: string,
+  who: { name: string; phone: string; email: string },
+): Promise<{ id: string }> {
+  const [firstName, ...rest] = who.name.trim().split(/\s+/);
+  const res = (await ghlPost(
+    "/contacts/upsert",
+    token,
+    {
+      locationId,
+      name: who.name.trim() || undefined,
+      firstName: firstName || undefined,
+      lastName: rest.join(" ") || undefined,
+      phone: who.phone || undefined,
+      email: who.email || undefined,
+      source: "WMX Client Communications portal",
+    },
+    "2021-07-28",
+    "contacts.write",
+  )) as { contact?: { id?: string } };
+  const id = res.contact?.id;
+  if (!id) throw new GhlError(500, "GoHighLevel didn't return a contact.");
+  return { id };
+}
