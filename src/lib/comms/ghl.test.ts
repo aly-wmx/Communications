@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { channelFrom, eventFromApiMessage, messageRecordFromApi, normalisePhone, parseGhlPayload, toMillis, unansweredTail } from './ghl';
+import { channelFrom, eventFromApiMessage, messageRecordFromApi, normalisePhone, parseGhlPayload, sameMessage, toMillis, unansweredTail } from './ghl';
 
 const now = new Date('2026-10-02T15:00:00Z');
 
@@ -77,11 +77,12 @@ describe('eventFromApiMessage', () => {
     });
   });
 
-  it('keeps missed calls and voicemails, skips answered inbound calls', () => {
+  it('keeps missed calls and voicemails; an answered inbound call counts as responding', () => {
     const call = (status: string) => ({ id: 'm2', direction: 'inbound', messageType: 'TYPE_CALL', dateAdded: at, meta: { call: { status } } });
     expect(eventFromApiMessage(conv, call('no-answer'), now)?.channel).toBe('Missed call');
     expect(eventFromApiMessage(conv, call('voicemail'), now)?.channel).toBe('Voicemail');
-    expect(eventFromApiMessage(conv, call('completed'), now)).toBeNull();
+    const answered = eventFromApiMessage(conv, call('completed'), now);
+    expect(answered).toMatchObject({ direction: 'outbound', channel: 'Call', answeredCall: true, messageId: 'm2' });
   });
 
   it('counts outbound only when a person sent it', () => {
@@ -159,5 +160,24 @@ describe('messageRecordFromApi call details and attachments', () => {
     expect(call).toMatchObject({ callStatus: 'completed', durationSeconds: 95, attachments: [] });
     const mms = messageRecordFromApi(conv, { id: 'n', direction: 'inbound', messageType: 'TYPE_SMS', body: 'Look', dateAdded: '2026-10-02T14:00:00Z', attachments: ['https://storage.googleapis.com/msgsndr/a.jpg', 'ftp://x'] }, now);
     expect(mms).toMatchObject({ callStatus: '', durationSeconds: null, attachments: ['https://storage.googleapis.com/msgsndr/a.jpg'] });
+  });
+});
+
+describe('sameMessage', () => {
+  const at = '2026-10-09T15:00:00Z';
+  const e = (messageId: string, when = at) => ({ direction: 'inbound' as const, channel: 'Text' as const, ghlContactId: 'c1', name: '', phone: '', email: '', body: 'Hello?', messageId, at: when });
+  const text = 'Text via GoHighLevel: “Hello?”';
+
+  it('keeps two real messages with the same text (each has its own id)', () => {
+    expect(sameMessage(e('m2', '2026-10-09T15:06:00Z'), { at, byId: '', message: text, ghlId: 'm1' }, text)).toBe(false);
+  });
+  it('matches a sighting without an id to one with an id', () => {
+    expect(sameMessage(e('m1'), { at, byId: '', message: text }, text)).toBe(true);
+    expect(sameMessage(e(''), { at, byId: '', message: text, ghlId: 'm1' }, text)).toBe(true);
+  });
+  it('never matches across a long gap, different text, or a teammate entry', () => {
+    expect(sameMessage(e(''), { at: '2026-10-09T14:00:00Z', byId: '', message: text }, text)).toBe(false);
+    expect(sameMessage(e(''), { at, byId: '', message: 'Text via GoHighLevel: “Yes”' }, text)).toBe(false);
+    expect(sameMessage(e(''), { at, byId: 'tm1', message: text }, text)).toBe(false);
   });
 });

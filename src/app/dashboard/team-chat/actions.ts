@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { changeContact } from "@/lib/comms/contact-write";
 import { getSessionMember } from "@/lib/auth";
 import type { ActionResult } from "@/lib/action-result";
 import { serviceDb } from "@/lib/comms/ghl-store";
@@ -9,7 +10,6 @@ import { dispatchPending, saveNotifications } from "@/lib/comms/notify-store";
 import { createClient } from "@/lib/supabase/server";
 import { noteSchema } from "@/lib/validation/notes";
 import { assign, createContact } from "@/lib/comms/contacts";
-import { contactFromRow, contactPatch } from "@/lib/comms/rows";
 import type { Json } from "@/lib/supabase/database.types";
 import type { TeamMember } from "@/lib/comms/types";
 
@@ -45,11 +45,13 @@ export async function addTeamNote(input: unknown): Promise<ActionResult> {
   // Flagged: the reply is now theirs — assign what's waiting, or open an item so timers and escalation apply.
   if (flagged) {
     const now = new Date();
-    const { data: open } = await supabase.from("contacts").select("*").eq("client_id", clientId).eq("status", "Open");
+    const { data: open } = await supabase.from("contacts").select("id").eq("client_id", clientId).eq("status", "Open");
     if (open?.length) {
       for (const row of open) {
-        const next = assign(contactFromRow(row), flagged.id, me.memberId, (team ?? []) as TeamMember[], now);
-        await supabase.from("contacts").update(contactPatch(next)).eq("id", row.id);
+        const saved = await changeContact(supabase, row.id, (c) =>
+          c.status === "Open" ? assign(c, flagged.id, me.memberId, (team ?? []) as TeamMember[], now) : c,
+        );
+        if (!saved.ok) return { ok: false, error: `Note posted, but ${flagged.name} couldn't be assigned: ${saved.error}` };
       }
     } else {
       const { data: lastIn } = await supabase

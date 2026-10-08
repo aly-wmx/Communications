@@ -1,4 +1,4 @@
-import { eventFromApiMessage, messageRecordFromApi, toMillis, type MessageRecord } from "@/lib/comms/ghl";
+import { eventFromApiMessage, messageRecordFromApi, toMillis, type GhlApiConversation, type GhlApiMessage, type MessageRecord } from "@/lib/comms/ghl";
 import { conversationMessages, fetchEmailContent, ghlConfig, GhlError, listGhlUsers, searchConversations } from "@/lib/comms/ghl-api";
 import { htmlToText } from "@/lib/comms/outbound";
 import { teamGhlContactIds } from "@/lib/comms/notify-store";
@@ -21,9 +21,18 @@ export const maxDuration = 60;
 const STATE_KEY = "ghl_sync";
 /** First run looks back this far, so a test text sent just before setup still shows up. */
 const FIRST_RUN_LOOKBACK_MS = 15 * 60_000;
-/** Re-scan a little before the last run to cover messages that arrived mid-run. */
-const OVERLAP_MS = 2 * 60_000;
-const MAX_CONVERSATIONS = 50;
+/** Re-scan before the last run: GHL sometimes lists a message (often email) a few minutes after its time. Safe: duplicates are ignored. */
+const OVERLAP_MS = 15 * 60_000;
+const PAGE = 50;
+/** Hard stops so one run can't spin forever, even after a long outage; the next run continues. */
+const MAX_CONVERSATION_PAGES = 20;
+const MAX_MESSAGE_PAGES = 10;
+/** Stop starting new work after this, leaving time to save progress before Vercel's 60s limit. */
+const BUDGET_MS = 45_000;
+/** A run holds the lock this long; a crashed run frees it on its own. */
+const LOCK_SECONDS = 58;
+/** A conversation that keeps failing is skipped after this many runs, so it can't hold the sync back. */
+const MAX_FAILURES = 3;
 /** Older emails copied without their text get filled in a few at a time. */
 const EMAIL_REPAIRS_PER_RUN = 15;
 
@@ -49,6 +58,54 @@ interface SyncState {
   lastOkAt?: string;
   lastError?: string;
   lastCounts?: Record<string, number>;
+  /** Conversation id → runs in a row it failed. */
+  failures?: Record<string, number>;
+}
+
+/**
+ * Take the run lock so two runs never process the same window at once (a
+ * crashed run's lock expires on its own). If the lock itself errors, run anyway:
+ * a missed sync is worse than a rare overlap, which the claims already make safe.
+ */
+async function takeLock(sb: Db): Promise<boolean> {
+  const { data, error } = await sb.rpc("take_integration_lock", { lock_key: STATE_KEY, ttl_seconds: LOCK_SECONDS });
+  if (error) {
+    console.warn("ghl sync: lock unavailable, running without it", error.message);
+    return true;
+  }
+  return data === true;
+}
+
+async function releaseLock(sb: Db) {
+  await sb.rpc("release_integration_lock", { lock_key: STATE_KEY });
+}
+
+/** Every conversation changed since `since`, oldest first, paging GHL's newest-first list. */
+async function changedConversations(token: string, locationId: string, since: number) {
+  const found = new Map<string, GhlApiConversation>();
+  let after: number | undefined;
+  for (let page = 0; page < MAX_CONVERSATION_PAGES; page++) {
+    const batch = await searchConversations(token, locationId, PAGE, after);
+    for (const c of batch) if (c.id && toMillis(c.lastMessageDate) >= since) found.set(c.id, c);
+    const oldest = batch.length ? toMillis(batch[batch.length - 1].lastMessageDate) : 0;
+    if (batch.length < PAGE || oldest < since || oldest === after) break;
+    after = oldest;
+  }
+  return [...found.values()].sort((a, b) => toMillis(a.lastMessageDate) - toMillis(b.lastMessageDate));
+}
+
+/** A conversation's messages since `since`, oldest first, paging back as far as needed. */
+async function messagesSince(token: string, conversationId: string, since: number) {
+  const out: GhlApiMessage[] = [];
+  let lastMessageId: string | undefined;
+  for (let page = 0; page < MAX_MESSAGE_PAGES; page++) {
+    const res = await conversationMessages(token, conversationId, PAGE, lastMessageId);
+    out.push(...res.messages.filter((m) => toMillis(m.dateAdded) >= since));
+    const reachedOlder = res.messages.some((m) => toMillis(m.dateAdded) < since);
+    if (reachedOlder || !res.nextPage || !res.lastMessageId || res.lastMessageId === lastMessageId) break;
+    lastMessageId = res.lastMessageId;
+  }
+  return out.sort((a, b) => toMillis(a.dateAdded) - toMillis(b.dateAdded));
 }
 
 async function saveState(sb: Db, state: SyncState) {
@@ -76,15 +133,27 @@ async function run(req: Request): Promise<Response> {
   }
 
   const since = prev.cursor ? toMillis(prev.cursor) - OVERLAP_MS : startedAt.getTime() - FIRST_RUN_LOOKBACK_MS;
-  const counts = { conversations: 0, messages: 0, stored: 0, created: 0, appended: 0, responded: 0, duplicate: 0, archived: 0, skipped: 0, emailsFilled: 0 };
+  const counts = {
+    conversations: 0,
+    messages: 0,
+    stored: 0,
+    created: 0,
+    appended: 0,
+    responded: 0,
+    duplicate: 0,
+    archived: 0,
+    skipped: 0,
+    emailsFilled: 0,
+    failed: 0,
+    gaveUp: 0,
+    remaining: 0,
+  };
 
-  try {
-    const conversations = await searchConversations(token, locationId, MAX_CONVERSATIONS);
-    const changed = conversations.filter((c) => c.id && toMillis(c.lastMessageDate) >= since);
-    counts.conversations = changed.length;
-
-    if (check) {
+  if (check) {
+    try {
       // Connection test: shapes only, no client names, numbers or message text.
+      const conversations = await searchConversations(token, locationId, PAGE);
+      const changed = conversations.filter((c) => c.id && toMillis(c.lastMessageDate) >= since);
       const sample = changed[0] ?? conversations[0];
       const msgs = sample?.id ? (await conversationMessages(token, sample.id, 20)).messages : [];
       return json(200, {
@@ -99,7 +168,21 @@ async function run(req: Request): Promise<Response> {
         humanSentOutbound: msgs.filter((m) => m.direction === "outbound" && m.userId).length,
         lastSync: prev,
       });
+    } catch (err) {
+      return json(502, { ok: false, error: err instanceof GhlError ? err.message : "Check failed." });
     }
+  }
+
+  if (!(await takeLock(sb))) {
+    return json(200, { ok: true, skipped: "Another sync run is still going." });
+  }
+  const outOfTime = () => Date.now() - startedAt.getTime() > BUDGET_MS;
+  const failures: Record<string, number> = { ...(prev.failures ?? {}) };
+  const problems: string[] = [];
+
+  try {
+    const changed = await changedConversations(token, locationId, since);
+    counts.conversations = changed.length;
 
     // GHL user names (for "who replied" labels), refreshed at most hourly; a missing scope never stops the sync.
     const { data: usersState } = await sb.from("integration_state").select("value").eq("key", "ghl_users").maybeSingle();
@@ -127,12 +210,9 @@ async function run(req: Request): Promise<Response> {
 
     const businessId = await businessIdFor(sb, params.get("business"));
     const teamContacts = await teamGhlContactIds(sb);
-    for (const conv of changed) {
-      if (conv.contactId && teamContacts.has(conv.contactId)) continue;
-      const msgs = (await conversationMessages(token, conv.id!, 30)).messages
-        .filter((m) => toMillis(m.dateAdded) >= since)
-        .sort((a, b) => toMillis(a.dateAdded) - toMillis(b.dateAdded));
-      if (!msgs.length) continue;
+    const syncConversation = async (conv: GhlApiConversation) => {
+      const msgs = await messagesSince(token, conv.id!, since);
+      if (!msgs.length) return;
 
       // The full thread first, so the conversation view is complete even for messages the queue ignores.
       const records = msgs.map((m) => messageRecordFromApi(conv, m, startedAt)).filter((r): r is MessageRecord => r !== null);
@@ -172,8 +252,51 @@ async function run(req: Request): Promise<Response> {
       }
     }
 
-    // Fill in text and pictures for emails copied before this was possible, a few per run.
-    const { data: unchecked } = await sb
+    // The cursor only moves past conversations that were fully handled (they're processed oldest first),
+    // and never backwards because of the overlap, so a slow run can't make the window keep growing.
+    let cursor = startedAt.getTime();
+    let doneUpTo = prev.cursor ? toMillis(prev.cursor) : since;
+    const advance = (at: number) => {
+      doneUpTo = Math.max(doneUpTo, at);
+    };
+
+    for (let i = 0; i < changed.length; i++) {
+      const conv = changed[i];
+      const convAt = toMillis(conv.lastMessageDate);
+      if (outOfTime()) {
+        counts.remaining = changed.length - i;
+        cursor = Math.min(cursor, doneUpTo);
+        break;
+      }
+      if ((conv.contactId && teamContacts.has(conv.contactId)) || (failures[conv.id!] ?? 0) >= MAX_FAILURES) {
+        // Teammates aren't clients; a conversation we gave up on stays skipped while it's in the re-check window.
+        advance(convAt);
+        continue;
+      }
+      try {
+        await syncConversation(conv);
+        delete failures[conv.id!];
+        advance(convAt);
+      } catch (err) {
+        const tries = (failures[conv.id!] ?? 0) + 1;
+        failures[conv.id!] = tries;
+        const why = err instanceof Error ? err.message : "failed";
+        console.error("ghl sync: conversation failed", conv.id, tries, err);
+        if (tries >= MAX_FAILURES) {
+          // Give up on this one so it can't hold every later conversation back; it's reported in Settings.
+          counts.gaveUp++;
+          problems.push(`Skipped a conversation after ${tries} failed tries (${why})`);
+          advance(convAt);
+        } else {
+          counts.failed++;
+          // Next run starts from here again, so this conversation is retried.
+          cursor = Math.min(cursor, convAt - 1);
+        }
+      }
+    }
+
+    // Fill in text and pictures for emails copied before this was possible, a few per run (only with time to spare).
+    const { data: unchecked } = outOfTime() ? { data: [] } : await sb
       .from("messages")
       .select("id, body, attachments")
       .eq("channel", "Email")
@@ -182,6 +305,7 @@ async function run(req: Request): Promise<Response> {
       .order("occurred_at", { ascending: false })
       .limit(EMAIL_REPAIRS_PER_RUN);
     for (const m of unchecked ?? []) {
+      if (outOfTime()) break;
       const content = await emailContent(token, m.id);
       const existing = Array.isArray(m.attachments) ? (m.attachments as string[]) : [];
       await sb
@@ -200,19 +324,27 @@ async function run(req: Request): Promise<Response> {
       if (content && (content.text || content.attachments.length)) counts.emailsFilled++;
     }
 
+    // Forget conversations no longer in the window (a new message later gets a fresh try).
+    const seen = new Set(changed.map((c) => c.id));
+    for (const id of Object.keys(failures)) if (!seen.has(id)) delete failures[id];
+
     await saveState(sb, {
-      cursor: startedAt.toISOString(),
+      cursor: new Date(cursor).toISOString(),
       lastRunAt: startedAt.toISOString(),
       lastOkAt: new Date().toISOString(),
       lastCounts: counts,
+      failures,
+      ...(problems.length ? { lastError: problems.join(" · ") } : {}),
     });
     return json(200, { ok: true, ...counts });
   } catch (err) {
     const message = err instanceof GhlError ? err.message : "Sync failed; see Vercel logs.";
     console.error("ghl sync failed", err);
     // Keep the old cursor so the next run retries this window.
-    if (!check) await saveState(sb, { ...prev, lastRunAt: startedAt.toISOString(), lastError: message, lastCounts: counts });
+    await saveState(sb, { ...prev, lastRunAt: startedAt.toISOString(), lastError: message, lastCounts: counts });
     return json(err instanceof GhlError ? 502 : 500, { ok: false, error: message, ...counts });
+  } finally {
+    await releaseLock(sb);
   }
 }
 

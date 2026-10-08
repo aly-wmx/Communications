@@ -55,6 +55,7 @@ export async function queueAction(input: unknown): Promise<ActionResult> {
     .eq("id", contact.id)
     .eq("updated_at", row.updated_at)
     .select("id");
+  if (error?.code === "23505") return { ok: false, error: "This client already has an open item in the inbox — use that one instead." };
   if (error) return { ok: false, error: "Couldn't save that change." };
   if (!updated?.length) return { ok: false, error: "Someone else just updated this contact — refreshed, try again." };
 

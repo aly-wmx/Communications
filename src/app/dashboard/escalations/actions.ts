@@ -65,7 +65,14 @@ export async function escalateContact(input: unknown): Promise<ActionResult> {
   if (error) return { ok: false, error: "Couldn't escalate it." };
   if (!updated?.length) return { ok: false, error: "Someone else just updated this contact — try again." };
 
-  await saveNotifications(sb, planned, { contactId: contact.id, clientId: contact.clientId });
+  try {
+    await saveNotifications(sb, planned, { contactId: contact.id, clientId: contact.clientId });
+  } catch (err) {
+    // Never leave it looking escalated when nobody was told: put the contact back as it was.
+    console.error("escalation notifications failed; undoing the escalation", err);
+    await sb.from("contacts").update(contactPatch(contact)).eq("id", contact.id).eq("updated_at", next.updatedAt);
+    return { ok: false, error: "Couldn't notify anyone, so it wasn't escalated. Try again." };
+  }
   await deliverNow();
   revalidatePath("/dashboard", "layout");
   return { ok: true };
@@ -87,7 +94,8 @@ export async function acknowledgeEscalation(input: unknown): Promise<ActionResul
   const pending = contact.escalations.findLast((e) => !e.acknowledgedAt);
   if (!pending) return { ok: false, error: "Someone already picked this up." };
 
-  const next = acknowledge(contact, me.memberId, team, now);
+  // Whoever picks it up also gets it assigned, in the same guarded write.
+  const next = { ...acknowledge(contact, me.memberId, team, now), assigneeId: me.memberId };
   const { data: updated } = await sb
     .from("contacts")
     .update(contactPatch(next))
@@ -96,10 +104,7 @@ export async function acknowledgeEscalation(input: unknown): Promise<ActionResul
     .select("id");
   if (!updated?.length) return { ok: false, error: "Someone else just updated this — refresh and check who has it." };
 
-  // Assign it to whoever picked it up, and tell the others to stand down.
-  if (contact.assigneeId !== me.memberId) {
-    await sb.from("contacts").update({ assignee_id: me.memberId }).eq("id", contact.id);
-  }
+  // Tell the others to stand down.
   const planned = planPickedUp(planContext(contact, clientName, sla, now), planTeam(team), {
     byId: me.memberId,
     notifiedIds: pending.notifiedIds,

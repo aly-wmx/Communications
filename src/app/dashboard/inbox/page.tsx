@@ -21,6 +21,13 @@ const VIEWS = [
 type View = (typeof VIEWS)[number][0];
 
 const LIST_LIMIT = 150;
+/** Ids per request; ~150 keeps the URL well under server limits. */
+const ID_CHUNK = 150;
+const chunks = <T,>(items: T[], size: number): T[][] => {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+};
 /** Escape LIKE wildcards; drop characters that would break the filter syntax. */
 const safeTerm = (q: string) => `%${q.replace(/[",()]/g, " ").replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
@@ -81,36 +88,46 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
     all: null,
   };
 
-  let query = supabase
-    .from("client_overview")
-    .select(
-      "id, name, project, phone, email, stage, last_message_at, last_direction, last_channel, last_body, waiting, last_in_at, last_in_channel, last_in_body, last_in_source, last_in_attachments",
-    )
-    .eq("business_id", current.id)
-    .is("archived_at", null)
-    .order("last_in_at", { ascending: false, nullsFirst: false })
-    .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(LIST_LIMIT);
+  const listQuery = (onlyIds: string[] | null) => {
+    let query = supabase
+      .from("client_overview")
+      .select(
+        "id, name, project, phone, email, stage, last_message_at, last_direction, last_channel, last_body, waiting, last_in_at, last_in_channel, last_in_body, last_in_source, last_in_attachments",
+      )
+      .eq("business_id", current.id)
+      .is("archived_at", null)
+      .order("last_in_at", { ascending: false, nullsFirst: false })
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(LIST_LIMIT);
+    if (onlyIds) query = query.in("id", onlyIds.length ? onlyIds : ["__none__"]);
+    if (stage) query = query.eq("stage", stage);
+    else if (dept !== "all") {
+      const stages = departmentStages(dept).map((s) => `"${s}"`).join(",");
+      // Clients without a stage yet are usually new, so Sales sees them too.
+      query = dept === "sales" ? query.or(`stage.in.(${stages}),stage.is.null`) : query.in("stage", [...departmentStages(dept)]);
+    }
+    if (q) {
+      const t = safeTerm(q);
+      query = query.or(`name.ilike."${t}",phone.ilike."${t}",email.ilike."${t}",project.ilike."${t}"`);
+    }
+    return query;
+  };
+  // Long id lists go in chunks (a request URL has a size limit), then merge back into one newest-first list.
   const ids = idsFor[view];
-  if (ids) query = query.in("id", ids.length ? ids : ["__none__"]);
-  if (stage) query = query.eq("stage", stage);
-  else if (dept !== "all") {
-    const stages = departmentStages(dept).map((s) => `"${s}"`).join(",");
-    // Clients without a stage yet are usually new, so Sales sees them too.
-    query = dept === "sales" ? query.or(`stage.in.(${stages}),stage.is.null`) : query.in("stage", [...departmentStages(dept)]);
-  }
-  if (q) {
-    const t = safeTerm(q);
-    query = query.or(`name.ilike."${t}",phone.ilike."${t}",email.ilike."${t}",project.ilike."${t}"`);
-  }
-  const { data: list } = await query;
+  const newestFirst = (a: string | null, b: string | null) => (b ?? "").localeCompare(a ?? "");
+  const list = ids
+    ? (await Promise.all(chunks(ids, ID_CHUNK).map(async (part) => (await listQuery(part)).data ?? [])))
+        .flat()
+        .sort((a, b) => newestFirst(a.last_in_at, b.last_in_at) || newestFirst(a.last_message_at, b.last_message_at))
+        .slice(0, LIST_LIMIT)
+    : ((await listQuery(null)).data ?? []);
 
   // Counts for the view tabs (within the same department/stage filter, before search).
   const inScope = (clientStage: string | null) =>
     stage ? clientStage === stage : dept === "all" ? true : (departmentStages(dept) as readonly string[]).includes(clientStage ?? "") || (dept === "sales" && !clientStage);
-  const { data: stageRows } = byClient.size
-    ? await supabase.from("clients").select("id, stage").in("id", [...byClient.keys()])
-    : { data: [] as Array<{ id: string; stage: string | null }> };
+  const stageRows = (
+    await Promise.all(chunks([...byClient.keys()], ID_CHUNK).map(async (part) => (await supabase.from("clients").select("id, stage").in("id", part)).data ?? []))
+  ).flat();
   const stageOf = new Map((stageRows ?? []).map((r) => [r.id, r.stage]));
   const count = (v: View) => (idsFor[v] ?? []).filter((id) => inScope(stageOf.get(id) ?? null)).length;
 

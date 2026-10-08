@@ -23,6 +23,10 @@ export async function POST(req: Request): Promise<Response> {
     return json(400, { error: (err as Error).message });
   }
 
+  // Outbound events from a workflow don't say who sent them, so an auto-reply would look like a
+  // person answering. The sync picks up real replies within a minute, credited to the right person.
+  if (event.direction === "outbound") return json(200, { ok: true, action: "ignored", reason: "outbound is handled by the sync" });
+
   try {
     const sb = serviceDb();
     const businessId = await businessIdFor(sb, new URL(req.url).searchParams.get("business"));

@@ -25,6 +25,8 @@ export interface GhlEvent {
   at: string;
   /** For replies sent in GoHighLevel: which GHL user sent it. */
   ghlUserId?: string;
+  /** An incoming call someone picked up: counts as responding to the client. */
+  answeredCall?: boolean;
 }
 
 type Obj = Record<string, unknown>;
@@ -160,7 +162,23 @@ export function eventFromApiMessage(conv: GhlApiConversation, msg: GhlApiMessage
     if (direction === "inbound") {
       if (isVoicemail) channel = "Voicemail";
       else if (/no-?answer|missed|busy|fail|cancel/.test(callStatus)) channel = "Missed call";
-      else return null; // Answered: the client already spoke to someone.
+      else {
+        // Answered: the client spoke to someone, which stops the response clock like a reply.
+        const at = toMillis(msg.dateAdded);
+        return {
+          direction: "outbound",
+          channel: "Call",
+          ghlContactId: (conv.contactId ?? "").trim(),
+          name: (conv.fullName || conv.contactName || conv.phone || conv.email || "").trim(),
+          phone: (conv.phone ?? "").trim(),
+          email: (conv.email ?? "").trim(),
+          body: "",
+          messageId: msg.id,
+          at: at && at <= now.getTime() ? new Date(at).toISOString() : now.toISOString(),
+          ghlUserId: msg.userId ?? "",
+          answeredCall: true,
+        };
+      }
     } else {
       channel = "Call";
     }
@@ -266,4 +284,20 @@ export function unansweredTail<T extends { direction: string; sentByUser: boolea
     if (replied || answeredCall) lastReply = i;
   });
   return sorted.slice(lastReply + 1).filter((m) => m.direction === "inbound");
+}
+
+// ---------- Recognising the same message seen twice ----------
+
+/** A webhook (sometimes without an id) and the sync (with one) can report the same message minutes apart. */
+const SAME_MESSAGE_WINDOW_MS = 10 * 60_000;
+export const closeInTime = (a: string, b: string) => Math.abs(new Date(a).getTime() - new Date(b).getTime()) < SAME_MESSAGE_WINDOW_MS;
+
+/**
+ * Is this history entry the same client message as `e`? Only when one sighting
+ * had no GHL id: two separate messages with the same text ("Yes", "Hello?")
+ * each have their own id and are both kept.
+ */
+export function sameMessage(e: GhlEvent, entry: { at: string; byId: string; message: string; ghlId?: string }, message: string): boolean {
+  if (entry.byId !== "" || entry.message !== message || !closeInTime(entry.at, e.at)) return false;
+  return !e.messageId || !entry.ghlId;
 }

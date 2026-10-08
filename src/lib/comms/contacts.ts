@@ -1,4 +1,4 @@
-import { needsEscalation, slaState } from './sla';
+import { needsEscalation, slaState, startOfZonedDay } from './sla';
 import type {
   Client,
   ClientContact,
@@ -62,6 +62,11 @@ export function markResponded(c: ClientContact, byId: string, now = new Date(), 
     respondedById: c.respondedById || byId,
     status: waitingOnClient && c.status === 'Open' ? 'Waiting on client' : c.status,
   });
+}
+
+/** Add a line to the item's history without changing anything else (e.g. "Missed call logged"). */
+export function note(c: ClientContact, byId: string, message: string, now = new Date()) {
+  return withEvent(c, byId, message, now, {});
 }
 
 export function resolve(c: ClientContact, byId: string, now = new Date(), reason = '') {
@@ -171,8 +176,7 @@ export interface QueueStats {
 }
 
 export function queueStats(list: ClientContact[], s: SlaSettings, now: Date): QueueStats {
-  const startOfDay = new Date(now);
-  startOfDay.setHours(0, 0, 0, 0);
+  const startOfDay = startOfZonedDay(now, s.timeZone);
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60_000).toISOString();
 
   const responded7 = list.filter((c) => c.firstResponseAt && c.receivedAt >= weekAgo);

@@ -73,6 +73,7 @@ export async function saveNotifications(
       contact_id: about.contactId ?? null,
       client_id: about.clientId ?? null,
       // Portal-only kinds are never picked up by the email/Slack sender.
+      always_send: Boolean(about.alwaysSend),
       ...(rules && !rules.dm.includes(p.kind) ? { slack_status: "skipped" as const } : {}),
       ...(rules && !rules.email.includes(p.kind) ? { email_status: "skipped" as const } : {}),
     })),
@@ -166,8 +167,14 @@ export async function runEngine(sb: Db, now = new Date()): Promise<{ reminded: n
         .eq("updated_at", contactRow.updated_at)
         .select("id");
       if (updated?.length) {
-        await saveNotifications(sb, planned, { contactId: c.id, clientId: c.clientId });
-        escalated++;
+        try {
+          await saveNotifications(sb, planned, { contactId: c.id, clientId: c.clientId });
+          escalated++;
+        } catch (err) {
+          // Undo, so it's escalated again next minute rather than sitting escalated with nobody told.
+          console.error("auto-escalation notifications failed; undoing", c.id, err);
+          await sb.from("contacts").update(contactPatch(c)).eq("id", c.id).eq("updated_at", next.updatedAt);
+        }
       }
     } else if (reminderDue(c, sla, now)) {
       const { data: updated } = await sb
@@ -177,8 +184,13 @@ export async function runEngine(sb: Db, now = new Date()): Promise<{ reminded: n
         .is("reminded_at", null)
         .select("id");
       if (updated?.length) {
-        await saveNotifications(sb, planReminder(planContext(c, clientName, sla, now), members), { contactId: c.id, clientId: c.clientId });
-        reminded++;
+        try {
+          await saveNotifications(sb, planReminder(planContext(c, clientName, sla, now), members), { contactId: c.id, clientId: c.clientId });
+          reminded++;
+        } catch (err) {
+          console.error("reminder notifications failed; will retry", c.id, err);
+          await sb.from("contacts").update({ reminded_at: null }).eq("id", c.id);
+        }
       }
     }
   }
@@ -301,7 +313,8 @@ async function sendEmail(sb: Db, member: TeamRow, n: { title: string; body: stri
 async function dispatchChannel(sb: Db, team: TeamRow[]): Promise<number> {
   const token = process.env.SLACK_BOT_TOKEN ?? "";
   const { data: settings } = await sb.from("settings").select("slack_channel_id").eq("id", 1).maybeSingle();
-  const { data: posts } = await sb.from("slack_channel_posts").select("*").eq("status", "pending").order("created_at").limit(15);
+  // Claimed atomically, so two senders running at once never post the same message twice.
+  const { data: posts } = await sb.rpc("claim_channel_posts", { max_rows: 15 });
   if (!posts?.length) return 0;
   if (!token || !settings?.slack_channel_id) {
     await sb.from("slack_channel_posts").update({ status: "skipped", error: token ? "No channel set" : "Slack isn't connected" }).in("id", posts.map((p) => p.id));
@@ -327,7 +340,12 @@ async function dispatchChannel(sb: Db, team: TeamRow[]): Promise<number> {
       const hint = /not_in_channel|channel_not_found/.test(msg) ? `${msg} — invite the app to the channel (/invite @WMX Portal)` : msg;
       await sb
         .from("slack_channel_posts")
-        .update({ attempts: p.attempts + 1, error: hint.slice(0, 300), ...(p.attempts + 1 >= MAX_ATTEMPTS ? { status: "failed" } : {}) })
+        .update({
+          attempts: p.attempts + 1,
+          error: hint.slice(0, 300),
+          claimed_until: null,
+          ...(p.attempts + 1 >= MAX_ATTEMPTS ? { status: "failed" } : {}),
+        })
         .eq("id", p.id);
     }
   }
@@ -335,13 +353,9 @@ async function dispatchChannel(sb: Db, team: TeamRow[]): Promise<number> {
 }
 
 export async function dispatchPending(sb: Db, limit = 25): Promise<{ slack: number; email: number; failed: number; channel?: number }> {
-  const { data: pending } = await sb
-    .from("notifications")
-    .select("*")
-    .or("slack_status.eq.pending,email_status.eq.pending")
-    .order("created_at")
-    .limit(limit);
-  const [team, { data: prefRows }] = await Promise.all([loadTeam(sb), sb.from("notification_prefs").select("*")]);
+  // Claimed atomically: the every-minute job and an Escalate click can't both send the same notification.
+  const { data: pending } = await sb.rpc("claim_notifications", { max_rows: limit });
+  const [team, { data: prefRows }, rules] = await Promise.all([loadTeam(sb), sb.from("notification_prefs").select("*"), deliveryRules(sb)]);
   const channel = await dispatchChannel(sb, team);
   if (!pending?.length) return { slack: 0, email: 0, failed: 0, channel };
   const prefsFor = (id: string): Prefs => ({ ...DEFAULT_PREFS, ...(prefRows ?? []).find((p) => p.member_id === id) });
@@ -351,11 +365,18 @@ export async function dispatchPending(sb: Db, limit = 25): Promise<{ slack: numb
   for (const n of pending) {
     const member = team.find((t) => t.id === n.recipient_id);
     const prefs = prefsFor(n.recipient_id);
-    const patch: { slack_status?: string; email_status?: string; attempts: number; delivery_error?: string } = { attempts: n.attempts + 1 };
+    // Clearing the claim lets a failed channel be retried on the next run.
+    const patch: { slack_status?: string; email_status?: string; attempts: number; delivery_error?: string; claimed_until: null } = {
+      attempts: n.attempts + 1,
+      claimed_until: null,
+    };
     const errors: string[] = [];
 
+    // Settings → Notifications is checked again at send time, in case an admin changed it after this was queued.
+    const allowed = (list: string[]) => n.always_send || list.includes(n.kind);
+
     if (n.slack_status === "pending") {
-      if (!member || !slackToken || !member.slack_user_id || !prefs.slack || !wants(prefs, n.kind)) {
+      if (!member || !slackToken || !member.slack_user_id || !prefs.slack || !wants(prefs, n.kind) || !allowed(rules.dm)) {
         patch.slack_status = "skipped";
       } else {
         try {
@@ -370,7 +391,7 @@ export async function dispatchPending(sb: Db, limit = 25): Promise<{ slack: numb
     }
 
     if (n.email_status === "pending") {
-      if (!member || !member.email || !prefs.email || !wants(prefs, n.kind)) {
+      if (!member || !member.email || !prefs.email || !wants(prefs, n.kind) || !allowed(rules.email)) {
         patch.email_status = "skipped";
       } else {
         try {

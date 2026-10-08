@@ -2,19 +2,31 @@ import type { BusinessHours, ClientContact, SlaSettings } from './types';
 
 const MINUTE = 60_000;
 
+// Building an Intl.DateTimeFormat is slow, and the day-by-day walk below needs
+// several per day; one per time zone is reused for the life of the server.
+const formatters = new Map<string, Intl.DateTimeFormat>();
+function formatterFor(timeZone: string): Intl.DateTimeFormat {
+  let f = formatters.get(timeZone);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      second: "numeric",
+      weekday: "short",
+    });
+    formatters.set(timeZone, f);
+  }
+  return f;
+}
+
 /** Wall-clock parts of an instant in an IANA time zone (e.g. "America/Los_Angeles"). */
 function zonedParts(date: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "numeric",
-    second: "numeric",
-    weekday: "short",
-  }).formatToParts(date);
+  const parts = formatterFor(timeZone).formatToParts(date);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   return {
@@ -42,13 +54,30 @@ function zonedTime(year: number, month: number, day: number, hour: number, minut
   return guess - zoneOffset(new Date(first), timeZone);
 }
 
-export function isValidTimeZone(tz: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    return true;
-  } catch {
-    return false;
+const validZones = new Map<string, boolean>();
+/** Midnight today on the business's clock (the server runs in UTC). */
+export function startOfZonedDay(now: Date, timeZone?: string): Date {
+  if (!timeZone || !isValidTimeZone(timeZone)) {
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    return d;
   }
+  const p = zonedParts(now, timeZone);
+  return new Date(zonedTime(p.year, p.month, p.day, 0, 0, timeZone));
+}
+
+export function isValidTimeZone(tz: string): boolean {
+  let ok = validZones.get(tz);
+  if (ok === undefined) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: tz });
+      ok = true;
+    } catch {
+      ok = false;
+    }
+    validZones.set(tz, ok);
+  }
+  return ok;
 }
 
 /**
@@ -105,7 +134,12 @@ export function escalateThreshold(c: ClientContact, s: SlaSettings): number {
 
 export function slaState(c: ClientContact, s: SlaSettings, now: Date): SlaState {
   const escalateAfter = escalateThreshold(c, s);
-  const end = c.firstResponseAt ? new Date(c.firstResponseAt) : now;
+  // The clock stops at the first response; a resolved item nobody replied to stops when it was resolved.
+  const end = c.firstResponseAt
+    ? new Date(c.firstResponseAt)
+    : c.status === 'Resolved' && c.resolvedAt
+      ? new Date(c.resolvedAt)
+      : now;
   const waitedMinutes = businessMinutesBetween(new Date(c.receivedAt), end, s.businessHours, s.timeZone);
 
   if (c.firstResponseAt) return { stage: 'responded', waitedMinutes, minutesToNext: null, escalateAfter };

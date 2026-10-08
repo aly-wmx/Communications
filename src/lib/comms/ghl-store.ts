@@ -2,7 +2,7 @@ import "server-only";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/supabase/database.types";
-import { normalisePhone, type GhlEvent, type MessageRecord } from "./ghl";
+import { closeInTime, normalisePhone, sameMessage, type GhlEvent, type MessageRecord } from "./ghl";
 import { planNewMessage } from "./notify-plan";
 import { loadTeam, planTeam, saveNotifications } from "./notify-store";
 
@@ -183,50 +183,73 @@ export function describe(e: GhlEvent): string {
   return `${e.channel} via GoHighLevel${text}`;
 }
 
-/** Same message seen twice (webhook without an id, then the sync with one) lands within minutes with the same text. */
-const SAME_MESSAGE_WINDOW_MS = 10 * 60_000;
-const close = (a: string, b: string) => Math.abs(new Date(a).getTime() - new Date(b).getTime()) < SAME_MESSAGE_WINDOW_MS;
 
-type History = Array<{ at: string; byId: string; message: string }>;
+type HistoryEntry = { at: string; byId: string; message: string; /** GHL message id, when known. */ ghlId?: string };
+type History = HistoryEntry[];
+type ContactForUpdate = { id: string; history: History; updated_at: string };
 
-async function handleInbound(sb: Db, e: GhlEvent, client: ClientRow) {
-  const entry = { at: e.at, byId: "", message: describe(e) };
+/**
+ * Change a contact based on what it holds now, only if nobody else changed it
+ * since it was read (retrying a few times), so two writers never overwrite each
+ * other's history. Throws if it can't be saved, which releases the message's
+ * claim so the next sync tries again.
+ */
+async function updateContact<T extends ContactForUpdate>(
+  sb: Db,
+  id: string,
+  columns: string,
+  change: (c: T) => Database["public"]["Tables"]["contacts"]["Update"] | null,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const { data: row, error: readError } = await sb.from("contacts").select(columns).eq("id", id).maybeSingle();
+    if (readError) throw readError;
+    if (!row) return false;
+    const current = row as unknown as T;
+    const patch = change(current);
+    if (!patch) return false;
+    const { data: saved, error } = await sb
+      .from("contacts")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("updated_at", current.updated_at)
+      .select("id");
+    if (error) throw error;
+    if (saved?.length) return true;
+  }
+  throw new Error(`Contact ${id} kept changing while saving; will retry on the next sync.`);
+}
 
-  const { data: open } = await sb
-    .from("contacts")
-    .select("id,history,summary")
-    .eq("client_id", client.id)
-    .eq("status", "Open")
-    .order("received_at", { ascending: true })
-    .limit(1);
+async function handleInbound(sb: Db, e: GhlEvent, client: ClientRow, retried = false): Promise<{ action: "duplicate" | "appended" | "created"; contactId: string }> {
+  const entry: HistoryEntry = { at: e.at, byId: "", message: describe(e), ...(e.messageId ? { ghlId: e.messageId } : {}) };
+
+  const { data: open } = await sb.from("contacts").select("id").eq("client_id", client.id).eq("status", "Open").limit(1);
 
   if (open && open.length) {
     // Client is already waiting on us: keep one row and the original clock.
-    const c = open[0] as { id: string; history: History; summary: string };
-    const history = c.history ?? [];
-    if (history.some((h) => h.byId === "" && h.message === entry.message && close(h.at, e.at))) {
-      return { action: "duplicate" as const, contactId: c.id };
-    }
-    await sb
-      .from("contacts")
-      .update({
-        history: [...history, entry] as unknown as Json,
-        summary: c.summary || e.body,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", c.id);
-    return { action: "appended" as const, contactId: c.id };
+    const id = open[0].id;
+    let duplicate = false;
+    await updateContact<ContactForUpdate & { summary: string; status: string }>(sb, id, "id,history,summary,status,updated_at", (c) => {
+      if (c.status !== "Open") return null;
+      if ((c.history ?? []).some((h) => sameMessage(e, h, entry.message))) {
+        duplicate = true;
+        return null;
+      }
+      return { history: [...(c.history ?? []), entry] as unknown as Json, summary: c.summary || e.body };
+    });
+    return { action: duplicate ? "duplicate" : "appended", contactId: id };
   }
 
-  // Not waiting: was this exact message already turned into a contact (then answered)?
+  // Not waiting: was this exact message (seen once without an id) already turned into a contact, then answered?
   const { data: recent } = await sb
     .from("contacts")
-    .select("id,summary,received_at,channel")
+    .select("id,summary,received_at,channel,ghl_message_id")
     .eq("client_id", client.id)
     .order("received_at", { ascending: false })
     .limit(5);
-  const same = (recent ?? []).find((c) => c.summary === e.body && c.channel === e.channel && close(c.received_at, e.at));
-  if (same) return { action: "duplicate" as const, contactId: same.id };
+  const same = (recent ?? []).find(
+    (c) => c.summary === e.body && c.channel === e.channel && closeInTime(c.received_at, e.at) && (!e.messageId || !c.ghl_message_id),
+  );
+  if (same) return { action: "duplicate", contactId: same.id };
 
   const { data: settings } = await sb.from("settings").select("sla").eq("id", 1).maybeSingle();
   const defaultAssignee = (settings?.sla as { defaultAssigneeId?: string } | undefined)?.defaultAssigneeId || null;
@@ -244,8 +267,10 @@ async function handleInbound(sb: Db, e: GhlEvent, client: ClientRow) {
     source: "ghl",
     ghl_message_id: e.messageId || null,
   });
+  // Another run opened one for this client a moment ago (one open item per client): add to that instead.
+  if (error?.code === "23505" && !retried) return handleInbound(sb, e, client, true);
   if (error) throw error;
-  return { action: "created" as const, contactId: id };
+  return { action: "created", contactId: id };
 }
 
 /** The teammate behind a GHL user (matched by email), so replies sent in GHL are credited to them. */
@@ -262,26 +287,24 @@ async function teammateForGhlUser(sb: Db, ghlUserId: string): Promise<{ id: stri
 async function handleOutbound(sb: Db, e: GhlEvent, client: ClientRow) {
   const teammate = await teammateForGhlUser(sb, e.ghlUserId ?? "");
   // Only contacts that came in before this reply.
-  const { data: open } = await sb
-    .from("contacts")
-    .select("id,history,first_response_at")
-    .eq("client_id", client.id)
-    .eq("status", "Open")
-    .lte("received_at", e.at);
-  for (const c of (open ?? []) as Array<{ id: string; history: History; first_response_at: string | null }>) {
-    await sb
-      .from("contacts")
-      .update({
-        first_response_at: c.first_response_at ?? e.at,
-        ...(c.first_response_at ? {} : { responded_by_id: teammate?.id ?? "" }),
-        status: "Waiting on client",
-        history: [
-          ...(c.history ?? []),
-          { at: e.at, byId: teammate?.id ?? "", message: `Replied in GoHighLevel (${e.channel.toLowerCase()})${teammate ? ` by ${teammate.name}` : ""}` },
-        ] as unknown as Json,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", c.id);
+  const { data: open } = await sb.from("contacts").select("id").eq("client_id", client.id).eq("status", "Open").lte("received_at", e.at);
+  const by = teammate ? ` by ${teammate.name}` : "";
+  const message = e.answeredCall ? `Answered a call from the client${by}` : `Replied in GoHighLevel (${e.channel.toLowerCase()})${by}`;
+  for (const { id } of open ?? []) {
+    await updateContact<ContactForUpdate & { first_response_at: string | null; status: string }>(
+      sb,
+      id,
+      "id,history,first_response_at,status,updated_at",
+      (c) =>
+        c.status !== "Open"
+          ? null
+          : {
+              first_response_at: c.first_response_at ?? e.at,
+              ...(c.first_response_at ? {} : { responded_by_id: teammate?.id ?? "" }),
+              status: "Waiting on client",
+              history: [...(c.history ?? []), { at: e.at, byId: teammate?.id ?? "", message, ...(e.messageId ? { ghlId: e.messageId } : {}) }] as unknown as Json,
+            },
+    );
   }
   return { action: "responded" as const, updated: open?.length ?? 0, contactId: open?.[0]?.id };
 }

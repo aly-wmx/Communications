@@ -194,3 +194,12 @@ describe('resolve with a reason', () => {
     expect(c.history.at(-1)?.message).toBe('Resolved — Handled by phone');
   });
 });
+
+describe("startOfZonedDay", () => {
+  it("is midnight on the business's clock, not the server's", async () => {
+    const { startOfZonedDay } = await import("./sla");
+    // 02:30 UTC on Oct 9 is still Oct 8 in New York (22:30 EDT): midnight there is 04:00 UTC on Oct 8.
+    expect(startOfZonedDay(new Date("2026-10-09T02:30:00Z"), "America/New_York").toISOString()).toBe("2026-10-08T04:00:00.000Z");
+    expect(startOfZonedDay(new Date("2026-10-09T15:00:00Z"), "America/New_York").toISOString()).toBe("2026-10-09T04:00:00.000Z");
+  });
+});

@@ -200,6 +200,12 @@ export type Database = {
           },
         ];
       };
+      integration_locks: {
+        Row: { key: string; locked_until: string };
+        Insert: { key: string; locked_until: string };
+        Update: { key?: string; locked_until?: string };
+        Relationships: [];
+      };
       integration_state: {
         Row: { key: string; updated_at: string; value: Json };
         Insert: { key: string; updated_at?: string; value?: Json };
@@ -273,8 +279,10 @@ export type Database = {
       };
       notifications: {
         Row: {
+          always_send: boolean;
           attempts: number;
           body: string;
+          claimed_until: string | null;
           client_id: string | null;
           contact_id: string | null;
           created_at: string;
@@ -290,8 +298,10 @@ export type Database = {
           urgent: boolean;
         };
         Insert: {
+          always_send?: boolean;
           attempts?: number;
           body?: string;
+          claimed_until?: string | null;
           client_id?: string | null;
           contact_id?: string | null;
           created_at?: string;
@@ -307,8 +317,10 @@ export type Database = {
           urgent?: boolean;
         };
         Update: {
+          always_send?: boolean;
           attempts?: number;
           body?: string;
+          claimed_until?: string | null;
           client_id?: string | null;
           contact_id?: string | null;
           created_at?: string;
@@ -338,9 +350,9 @@ export type Database = {
         Relationships: [];
       };
       slack_channel_posts: {
-        Row: { attempts: number; body: string; created_at: string; error: string; id: string; kind: string; link: string; mention_member_ids: string[]; status: string; title: string; urgent: boolean };
-        Insert: { attempts?: number; body?: string; created_at?: string; error?: string; id?: string; kind: string; link?: string; mention_member_ids?: string[]; status?: string; title: string; urgent?: boolean };
-        Update: { attempts?: number; body?: string; created_at?: string; error?: string; id?: string; kind?: string; link?: string; mention_member_ids?: string[]; status?: string; title?: string; urgent?: boolean };
+        Row: { attempts: number; body: string; claimed_until: string | null; created_at: string; error: string; id: string; kind: string; link: string; mention_member_ids: string[]; status: string; title: string; urgent: boolean };
+        Insert: { attempts?: number; body?: string; claimed_until?: string | null; created_at?: string; error?: string; id?: string; kind: string; link?: string; mention_member_ids?: string[]; status?: string; title: string; urgent?: boolean };
+        Update: { attempts?: number; body?: string; claimed_until?: string | null; created_at?: string; error?: string; id?: string; kind?: string; link?: string; mention_member_ids?: string[]; status?: string; title?: string; urgent?: boolean };
         Relationships: [];
       };
       team_notes: {
@@ -423,9 +435,13 @@ export type Database = {
       };
     };
     Functions: {
+      claim_channel_posts: { Args: { max_rows: number }; Returns: Database["public"]["Tables"]["slack_channel_posts"]["Row"][] };
+      claim_notifications: { Args: { max_rows: number }; Returns: Database["public"]["Tables"]["notifications"]["Row"][] };
       current_member_id: { Args: never; Returns: string };
       current_member_role: { Args: never; Returns: string };
       is_team_member: { Args: never; Returns: boolean };
+      release_integration_lock: { Args: { lock_key: string }; Returns: undefined };
+      take_integration_lock: { Args: { lock_key: string; ttl_seconds: number }; Returns: boolean };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

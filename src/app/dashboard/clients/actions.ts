@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { changeContact } from "@/lib/comms/contact-write";
 import { getSessionMember, requireAdmin } from "@/lib/auth";
 import { resolve } from "@/lib/comms/contacts";
 import { addGhlTags, ghlConfig, GhlError, removeGhlTags, updateGhlContact } from "@/lib/comms/ghl-api";
-import { contactFromRow, contactPatch } from "@/lib/comms/rows";
 import { toE164 } from "@/lib/comms/outbound";
 import { createClient } from "@/lib/supabase/server";
 import { archiveSchema, clientUpdateSchema, stageSchema } from "@/lib/validation/clients";
@@ -108,10 +108,17 @@ export async function archiveClient(input: unknown): Promise<UpdateClientResult>
     .eq("id", clientId);
   if (error) return { ok: false, error: "Couldn't archive the client." };
 
-  const { data: open } = await supabase.from("contacts").select("*").eq("client_id", clientId).neq("status", "Resolved");
+  const { data: open } = await supabase.from("contacts").select("id").eq("client_id", clientId).neq("status", "Resolved");
+  const unresolved: string[] = [];
   for (const row of open ?? []) {
-    const next = resolve(contactFromRow(row), me.memberId, now, reason === "spam" ? "Marked as spam" : "Archived");
-    await supabase.from("contacts").update(contactPatch(next)).eq("id", row.id);
+    const saved = await changeContact(supabase, row.id, (c) =>
+      c.status === "Resolved" ? c : resolve(c, me.memberId, now, reason === "spam" ? "Marked as spam" : "Archived"),
+    );
+    if (!saved.ok) unresolved.push(saved.error);
+  }
+  if (unresolved.length) {
+    revalidatePath("/dashboard", "layout");
+    return { ok: true, warning: `Archived, but ${unresolved.length} open item(s) couldn't be resolved — resolve them from the conversation.` };
   }
 
   revalidatePath("/dashboard", "layout");

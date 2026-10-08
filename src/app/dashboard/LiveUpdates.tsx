@@ -148,7 +148,8 @@ export function LiveUpdates({
       const businessName =
         client && client.business_id !== p.currentBusinessId ? (p.businessNames[client.business_id] ?? "") : "";
       const preview = alert.body.replace(/…$/, "");
-      const body = latest?.body && (!preview || latest.body.startsWith(preview.slice(0, 40))) ? latest.body : alert.body;
+      // Only swap in the full text when it's clearly the same message (calls and voicemails have no preview to match).
+      const body = latest?.body && preview && latest.body.startsWith(preview.slice(0, 40)) ? latest.body : alert.body;
       const toast: Toast = { ...alert, body, clientName, businessName, link: `/dashboard/clients/${alert.clientId}`, at: new Date().toISOString() };
 
       setToasts((list) => [toast, ...list].slice(0, 4));

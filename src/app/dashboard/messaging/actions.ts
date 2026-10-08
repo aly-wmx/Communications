@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { changeContact } from "@/lib/comms/contact-write";
 import { getSessionMember, type SessionMember } from "@/lib/auth";
 import { canSendMessages } from "@/lib/roles";
 import { getBusinessContext } from "@/lib/business";
@@ -8,7 +9,6 @@ import { markResponded } from "@/lib/comms/contacts";
 import { ghlConfig, GhlError, sendGhlMessage, upsertGhlContact } from "@/lib/comms/ghl-api";
 import { ensureClient, serviceDb, type Db } from "@/lib/comms/ghl-store";
 import { textToHtml, toE164 } from "@/lib/comms/outbound";
-import { contactFromRow, contactPatch } from "@/lib/comms/rows";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/database.types";
 import { newConversationSchema, replySchema } from "@/lib/validation/messaging";
@@ -92,10 +92,11 @@ async function sendAndRecord(
   ]);
 
   // Replying answers whatever the client was waiting on.
-  const { data: open } = await sb.from("contacts").select("*").eq("client_id", client.id).eq("status", "Open");
+  // The message has already gone, so a failure here is logged rather than reported as a failed send.
+  const { data: open } = await sb.from("contacts").select("id").eq("client_id", client.id).eq("status", "Open");
   for (const row of open ?? []) {
-    const next = markResponded(contactFromRow(row), me.memberId, now);
-    await sb.from("contacts").update(contactPatch(next)).eq("id", row.id);
+    const saved = await changeContact(sb, row.id, (c) => (c.status === "Open" ? markResponded(c, me.memberId, now) : c));
+    if (!saved.ok) console.error("sent, but couldn't mark the item answered", row.id, saved.error);
   }
 }
 
@@ -109,6 +110,7 @@ async function sendUsage(sb: Db, me: SessionMember): Promise<SendUsage> {
       .select("client_id")
       .eq("source", `portal:${me.name}`)
       .eq("direction", "outbound")
+      .in("channel", ["Text", "Email"]) // logged calls aren't sends
       .gte("occurred_at", hourAgo)
       .limit(500),
   ]);

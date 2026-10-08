@@ -4,7 +4,8 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { getSessionMember } from "@/lib/auth";
 import type { ActionResult } from "@/lib/action-result";
-import { createContact } from "@/lib/comms/contacts";
+import { createContact, markResponded, note } from "@/lib/comms/contacts";
+import { changeContact } from "@/lib/comms/contact-write";
 import { serviceDb } from "@/lib/comms/ghl-store";
 import { slaFromJson } from "@/lib/comms/rows";
 import { createClient } from "@/lib/supabase/server";
@@ -18,7 +19,7 @@ const STATUS = { connected: "completed", missed: "no-answer", voicemail: "voicem
  * It joins the client's thread and the call log; a missed call or voicemail
  * from the client also opens a queue item so someone calls back.
  */
-export async function logCall(input: unknown): Promise<ActionResult> {
+export async function logCall(input: unknown): Promise<ActionResult | { ok: true; warning: string }> {
   const me = await getSessionMember();
   if (!me) return { ok: false, error: "You're not signed in as a team member." };
   const parsed = logCallSchema.safeParse(input);
@@ -54,8 +55,30 @@ export async function logCall(input: unknown): Promise<ActionResult> {
     });
   if (error) return { ok: false, error: "Couldn't log the call." };
 
+  const now = new Date();
+  const { data: open } = await supabase.from("contacts").select("id").eq("client_id", client.id).eq("status", "Open");
+  const missed = v.direction === "inbound" && (v.outcome === "missed" || v.outcome === "voicemail");
+
+  // Speaking to the client, or calling them back, answers what they were waiting on (stops the clock).
+  if (!missed && (v.direction === "outbound" || v.outcome === "connected")) {
+    for (const row of open ?? []) {
+      const saved = await changeContact(supabase, row.id, (c) =>
+        c.status === "Open" && c.receivedAt <= when.toISOString() ? markResponded(c, me.memberId, now) : c,
+      );
+      if (!saved.ok) return { ok: true, warning: `Call logged, but the waiting item couldn't be marked answered: ${saved.error}` };
+    }
+  }
+
+  // Already waiting on us: add the missed call to that item rather than opening a second one.
+  if (missed && open?.length) {
+    const saved = await changeContact(supabase, open[0].id, (c) =>
+      note(c, me.memberId, `${channel} logged by ${me.name}${v.note ? `: “${v.note.slice(0, 140)}”` : ""}`, now),
+    );
+    if (!saved.ok) return { ok: true, warning: `Call logged, but it couldn't be added to the waiting item: ${saved.error}` };
+  }
+
   // A client we missed needs a call back: put it in the queue.
-  if (v.direction === "inbound" && (v.outcome === "missed" || v.outcome === "voicemail")) {
+  if (missed && !open?.length) {
     const { data: settings } = await supabase.from("settings").select("sla").eq("id", 1).maybeSingle();
     const c = createContact(
       {
@@ -69,7 +92,7 @@ export async function logCall(input: unknown): Promise<ActionResult> {
       me.memberId,
       new Date(),
     );
-    await supabase.from("contacts").insert({
+    const { error: insertError } = await supabase.from("contacts").insert({
       id: c.id,
       client_id: c.clientId,
       channel: c.channel,
@@ -81,6 +104,8 @@ export async function logCall(input: unknown): Promise<ActionResult> {
       history: c.history as unknown as Json,
       source: "manual",
     });
+    // 23505: an item was opened for this client a moment ago, which covers the call back.
+    if (insertError && insertError.code !== "23505") return { ok: true, warning: "Call logged, but a call-back item couldn't be added to the inbox." };
   }
 
   revalidatePath("/dashboard", "layout");

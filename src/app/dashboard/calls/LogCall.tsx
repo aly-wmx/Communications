@@ -21,6 +21,8 @@ export function LogCall() {
   const [note, setNote] = useState("");
   const [when, setWhen] = useState(localNow);
   const [error, setError] = useState<string | null>(null);
+  // The call was logged but something after it didn't save; shown next to the button once the form closes.
+  const [warning, setWarning] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -43,6 +45,7 @@ export function LogCall() {
         occurredAt: new Date(when).toISOString(),
       });
       if (!r.ok) return setError(r.error);
+      setWarning("warning" in r ? r.warning : null);
       dialog.current?.close();
       setPicked(null);
       setQuery("");
@@ -61,12 +64,18 @@ export function LogCall() {
         onClick={() => {
           setWhen(localNow());
           setError(null);
+          setWarning(null);
           dialog.current?.showModal();
         }}
         className="rounded-md bg-[#1C2B47] px-3 py-1.5 text-sm font-semibold text-white hover:brightness-125"
       >
         + Log a call
       </button>
+      {warning && (
+        <p role="status" className="max-w-xs text-xs text-amber-800">
+          {warning}
+        </p>
+      )}
       <dialog ref={dialog} aria-label="Log a call" className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-xl border border-zinc-200 p-0 shadow-xl backdrop:bg-black/40">
         <form onSubmit={submit} className="space-y-3 p-5">
           <h2 className="text-base font-semibold text-zinc-900">Log a call</h2>
