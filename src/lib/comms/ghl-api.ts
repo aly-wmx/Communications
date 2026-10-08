@@ -1,5 +1,6 @@
 import "server-only";
 import type { GhlApiConversation, GhlApiMessage } from "./ghl";
+import { emailMetaFrom, type EmailMeta } from "./email-meta";
 
 /** Minimal GoHighLevel API client for the sync and history copy. Server only: uses GHL_API_KEY. */
 
@@ -211,18 +212,22 @@ export async function fetchEmailContent(
   token: string,
   messageId: string,
   htmlToText: (h: string) => string,
-): Promise<{ text: string; attachments: string[] }> {
+): Promise<{ text: string; attachments: string[]; meta: EmailMeta }> {
   const detail = (await ghlGet(`/conversations/messages/${encodeURIComponent(messageId)}`, token)) as {
     message?: { meta?: { email?: { messageIds?: string[] } } };
     meta?: { email?: { messageIds?: string[] } };
   };
-  const meta = detail.message?.meta ?? detail.meta;
-  const emailIds = meta?.email?.messageIds?.length ? meta.email.messageIds : [messageId];
+  const msgMeta = detail.message?.meta ?? detail.meta;
+  const emailIds = msgMeta?.email?.messageIds?.length ? msgMeta.email.messageIds : [messageId];
   const res = (await ghlGet(`/conversations/messages/email/${encodeURIComponent(emailIds[emailIds.length - 1])}`, token)) as {
-    emailMessage?: { body?: string; subject?: string; attachments?: unknown[] };
+    emailMessage?: { body?: string; subject?: string; attachments?: unknown[]; from?: unknown; to?: unknown; cc?: unknown; bcc?: unknown };
     body?: string;
     subject?: string;
     attachments?: unknown[];
+    from?: unknown;
+    to?: unknown;
+    cc?: unknown;
+    bcc?: unknown;
   };
   const email = res.emailMessage ?? res;
   const html = email.body ?? "";
@@ -238,9 +243,12 @@ export async function fetchEmailContent(
     .map((tag) => /\bsrc\s*=\s*["']([^"']+)["']/i.exec(tag)?.[1] ?? "")
     .filter((u) => /^https:\/\//.test(u));
 
+  const headers = emailMetaFrom(email);
   return {
-    text: [subject, text].filter(Boolean).join("\n\n").slice(0, 5000),
+    // The subject is shown in the email header now, so the body starts with the message itself.
+    text: (text || subject).slice(0, 5000),
     attachments: [...new Set([...fromAttachments, ...inline])].slice(0, 20),
+    meta: headers,
   };
 }
 

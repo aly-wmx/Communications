@@ -10,6 +10,7 @@ import { ensureClient, serviceDb, type Db } from "@/lib/comms/ghl-store";
 import { textToHtml, toE164 } from "@/lib/comms/outbound";
 import { contactFromRow, contactPatch } from "@/lib/comms/rows";
 import { createClient } from "@/lib/supabase/server";
+import type { Json } from "@/lib/supabase/database.types";
 import { newConversationSchema, replySchema } from "@/lib/validation/messaging";
 
 export type SendResult = { ok: true; clientId: string } | { ok: false; error: string };
@@ -64,7 +65,7 @@ async function sendAndRecord(
 
   const now = new Date();
   const messageId = sent.messageId || `portal_${now.getTime()}_${client.id}`;
-  const body = input.channel === "Email" && input.subject ? `${input.subject}\n\n${input.message}` : input.message;
+  const body = input.message;
 
   await Promise.all([
     sb.from("messages").upsert(
@@ -79,6 +80,8 @@ async function sendAndRecord(
         sent_by_user: true,
         source: `portal:${me.name}`,
         occurred_at: now.toISOString(),
+        email_meta:
+          input.channel === "Email" ? ({ from: "", to: client.email ? [client.email] : [], cc: [], bcc: [], subject: input.subject ?? "" } as unknown as Json) : null,
       },
       { onConflict: "id", ignoreDuplicates: true },
     ),

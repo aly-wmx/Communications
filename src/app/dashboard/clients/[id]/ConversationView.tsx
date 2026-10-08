@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { ChatThread, type ChatMessage } from "./ChatThread";
 import { parseAttachments } from "@/lib/comms/channels";
 import { senderLabel } from "@/lib/comms/sender";
+import { participants, type EmailMeta } from "@/lib/comms/email-meta";
+import { EmailParticipants } from "./EmailParticipants";
 import { ClientDetails } from "./ClientDetails";
 import { ArchiveControls } from "./ArchiveControls";
 import { Composer } from "./Composer";
@@ -37,7 +39,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
 
   let threadQuery = supabase
     .from("messages")
-    .select("id, direction, channel, body, sent_by_user, occurred_at, conversation_id, attachments, source, ghl_user_id")
+    .select("id, direction, channel, body, sent_by_user, occurred_at, conversation_id, attachments, source, ghl_user_id, email_meta")
     .eq("client_id", id)
     .order("occurred_at", { ascending: false })
     .limit(PAGE_SIZE + 1);
@@ -60,6 +62,19 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
     supabase.from("team_members").select("id, name, escalation").order("name"),
   ]);
   if (!client) notFound();
+  // Everyone on this client's emails (all of them, not just the page shown), minus our own addresses.
+  const [{ data: allEmailMeta }, { data: accessSettings }, { data: teamEmails }] = await Promise.all([
+    supabase.from("messages").select("email_meta").eq("client_id", id).eq("channel", "Email").not("email_meta", "is", null).limit(500),
+    supabase.from("settings").select("allowed_domains").eq("id", 1).maybeSingle(),
+    supabase.from("team_members").select("email"),
+  ]);
+  const ourDomains = new Set([...(accessSettings?.allowed_domains ?? []), "watermarkdesignbuild.com", "wmx.group"].map((d) => d.toLowerCase()));
+  const ourEmails = new Set((teamEmails ?? []).map((t) => t.email.toLowerCase()).filter(Boolean));
+  const emailPeople = participants(
+    (allEmailMeta ?? []).map((r) => r.email_meta as unknown as EmailMeta),
+    (e) => ourEmails.has(e) || ourDomains.has(e.split("@")[1] ?? ""),
+  );
+
   const { data: notes } = await supabase
     .from("team_notes")
     .select("id, author_id, body, created_at, flagged_for")
@@ -90,6 +105,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
     occurredAt: m.occurred_at,
     attachments: parseAttachments(m.attachments),
     sender: senderLabel({ direction: m.direction, source: m.source, sentByUser: m.sent_by_user, ghlUserId: m.ghl_user_id }, ghlName),
+    emailMeta: m.channel === "Email" && m.email_meta ? (m.email_meta as unknown as EmailMeta) : null,
   }));
   // Team notes sit in the same timeline (within the window of messages shown).
   const windowStart = hasOlder ? rows[0]?.occurred_at : "";
@@ -216,6 +232,8 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
             team={team ?? []}
             isAdmin={me?.role === "admin"}
           />
+
+          {emailPeople.length > 0 && <EmailParticipants people={emailPeople} clientEmail={client.email} />}
 
           <ArchiveControls
             clientId={client.id}

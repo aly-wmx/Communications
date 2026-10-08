@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { RecordingPlayer } from "./RecordingPlayer";
 import { channelStyle, type Attachment } from "@/lib/comms/channels";
+import type { EmailMeta } from "@/lib/comms/email-meta";
 
 export interface ChatMessage {
   id: string;
@@ -18,6 +19,28 @@ export interface ChatMessage {
   sender?: string;
   /** For team notes: who's been asked to reply to the client. */
   flaggedFor?: string;
+  /** Emails: From / To / Cc / Subject. */
+  emailMeta?: EmailMeta | null;
+}
+
+/** The email's header lines, like an email client. */
+function EmailHeader({ meta, light }: { meta: EmailMeta; light: boolean }) {
+  const row = (label: string, value: string) =>
+    value ? (
+      <p className="flex gap-1.5">
+        <span className={`w-11 shrink-0 ${light ? "text-white/60" : "text-zinc-400"}`}>{label}</span>
+        <span className="min-w-0 break-words">{value}</span>
+      </p>
+    ) : null;
+  return (
+    <div className={`mb-2 space-y-0.5 border-b pb-2 text-[11px] ${light ? "border-white/20 text-white/90" : "border-zinc-200 text-zinc-600"}`}>
+      {meta.subject && <p className={`text-[13px] font-semibold ${light ? "text-white" : "text-zinc-900"}`}>{meta.subject}</p>}
+      {row("From", meta.from)}
+      {row("To", meta.to.join(", "))}
+      {row("Cc", meta.cc.join(", "))}
+      {row("Bcc", meta.bcc.join(", "))}
+    </div>
+  );
 }
 
 const fullDate = (iso: string) =>
@@ -260,7 +283,10 @@ export function ChatThread({
                               : `${first ? "" : "rounded-tl-md"} ${last ? "rounded-bl-sm" : "rounded-bl-md"}`
                           }`}
                         >
-                          {m.channel !== "Text" && (
+                          {m.emailMeta && (m.emailMeta.from || m.emailMeta.to.length || m.emailMeta.subject) && (
+                            <EmailHeader meta={m.emailMeta} light={out && !automated} />
+                          )}
+                          {m.channel !== "Text" && !m.emailMeta && (
                             <p className={`mb-0.5 text-[10px] font-semibold uppercase tracking-wide ${out && !automated ? "text-white/70" : "text-zinc-500"}`}>
                               {channelStyle(m.channel).icon} {channelStyle(m.channel).label}
                             </p>

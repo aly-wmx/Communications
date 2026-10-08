@@ -217,6 +217,7 @@ export type Database = {
           created_at: string;
           direction: string;
           duration_seconds: number | null;
+          email_meta: Json | null;
           ghl_user_id: string;
           id: string;
           occurred_at: string;
@@ -234,6 +235,7 @@ export type Database = {
           created_at?: string;
           direction: string;
           duration_seconds?: number | null;
+          email_meta?: Json | null;
           ghl_user_id?: string;
           id: string;
           occurred_at: string;
@@ -251,6 +253,7 @@ export type Database = {
           created_at?: string;
           direction?: string;
           duration_seconds?: number | null;
+          email_meta?: Json | null;
           ghl_user_id?: string;
           id?: string;
           occurred_at?: string;

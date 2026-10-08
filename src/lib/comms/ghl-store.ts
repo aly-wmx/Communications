@@ -156,6 +156,7 @@ export async function storeMessages(sb: Db, clientId: string, records: MessageRe
         duration_seconds: r.durationSeconds,
         attachments: r.attachments,
         ghl_user_id: r.ghlUserId,
+        email_meta: (r.emailMeta ?? null) as unknown as Json,
       })),
       { onConflict: "id", ignoreDuplicates: true },
     )
@@ -165,13 +166,14 @@ export async function storeMessages(sb: Db, clientId: string, records: MessageRe
   // Messages copied before call details and photos were kept: fill those in (body is left alone).
   const inserted = new Set((data ?? []).map((d) => d.id));
   for (const r of records) {
-    if (inserted.has(r.id) || (!r.callStatus && !r.attachments.length && !r.ghlUserId)) continue;
+    if (inserted.has(r.id) || (!r.callStatus && !r.attachments.length && !r.ghlUserId && !r.emailMeta)) continue;
     await sb
       .from("messages")
       .update({
         ...(r.callStatus ? { call_status: r.callStatus, duration_seconds: r.durationSeconds } : {}),
         ...(r.attachments.length ? { attachments: r.attachments } : {}),
         ...(r.ghlUserId ? { ghl_user_id: r.ghlUserId } : {}),
+        ...(r.emailMeta ? { email_meta: r.emailMeta as unknown as Json } : {}),
       })
       .eq("id", r.id);
   }

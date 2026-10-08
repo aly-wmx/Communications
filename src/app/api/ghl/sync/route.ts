@@ -25,13 +25,13 @@ const FIRST_RUN_LOOKBACK_MS = 15 * 60_000;
 const OVERLAP_MS = 2 * 60_000;
 const MAX_CONVERSATIONS = 50;
 /** Older emails copied without their text get filled in a few at a time. */
-const EMAIL_REPAIRS_PER_RUN = 5;
+const EMAIL_REPAIRS_PER_RUN = 15;
 
-/** Marks an email whose text and pictures have been fetched, so it isn't fetched again. */
-const EMAIL_CHECKED = "email-v2";
+/** Marks an email whose text, pictures and From/To/Cc have been fetched, so it isn't fetched again. */
+const EMAIL_CHECKED = "email-v3";
 
 /** Best effort: an email we can't open still shows in the thread, just without text or pictures. */
-async function emailContent(token: string, messageId: string): Promise<{ text: string; attachments: string[] } | null> {
+async function emailContent(token: string, messageId: string): Promise<Awaited<ReturnType<typeof fetchEmailContent>> | null> {
   try {
     return await fetchEmailContent(token, messageId, htmlToText);
   } catch (err) {
@@ -134,6 +134,7 @@ async function run(req: Request): Promise<Response> {
         if (content) {
           r.body = r.body || content.text;
           r.attachments = [...new Set([...r.attachments, ...content.attachments])];
+          r.emailMeta = content.meta;
           r.status = EMAIL_CHECKED;
         }
       }
@@ -179,7 +180,12 @@ async function run(req: Request): Promise<Response> {
         .from("messages")
         .update(
           content
-            ? { body: m.body || content.text, attachments: [...new Set([...existing, ...content.attachments])], status: EMAIL_CHECKED }
+            ? {
+                body: m.body || content.text,
+                attachments: [...new Set([...existing, ...content.attachments])],
+                email_meta: content.meta as unknown as Json,
+                status: EMAIL_CHECKED,
+              }
             : { status: EMAIL_CHECKED },
         )
         .eq("id", m.id);

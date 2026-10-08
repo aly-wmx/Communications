@@ -204,6 +204,8 @@ export interface MessageRecord {
   attachments: string[];
   /** The GoHighLevel user who sent it ('' for clients and automations). */
   ghlUserId: string;
+  /** From / To / Cc / Subject for emails (filled in by the sync). */
+  emailMeta?: import("./email-meta").EmailMeta;
 }
 
 /** Thread entry for any real conversation message, or null for system notes. Calls get a readable line. */
