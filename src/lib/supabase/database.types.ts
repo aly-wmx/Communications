@@ -329,9 +329,9 @@ export type Database = {
         Relationships: [];
       };
       settings: {
-        Row: { id: number; sla: Json; updated_at: string };
-        Insert: { id?: number; sla: Json; updated_at?: string };
-        Update: { id?: number; sla?: Json; updated_at?: string };
+        Row: { allowed_domains: string[]; blocked_emails: string[]; id: number; sla: Json; updated_at: string };
+        Insert: { allowed_domains?: string[]; blocked_emails?: string[]; id?: number; sla: Json; updated_at?: string };
+        Update: { allowed_domains?: string[]; blocked_emails?: string[]; id?: number; sla?: Json; updated_at?: string };
         Relationships: [];
       };
       team_notes: {

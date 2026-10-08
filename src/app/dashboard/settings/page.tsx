@@ -3,12 +3,13 @@ import { requireAdminPage } from "@/lib/auth";
 import { slaFromJson } from "@/lib/comms/rows";
 import { createClient } from "@/lib/supabase/server";
 import { SlaForm } from "./SlaForm";
+import { SignInAccess } from "./SignInAccess";
 
 export default async function SettingsPage() {
   await requireAdminPage();
   const supabase = await createClient();
   const [{ data: settings }, { data: team }, { data: sync }] = await Promise.all([
-    supabase.from("settings").select("sla").eq("id", 1).maybeSingle(),
+    supabase.from("settings").select("sla, allowed_domains, blocked_emails").eq("id", 1).maybeSingle(),
     supabase.from("team_members").select("id, name, escalation").order("name"),
     supabase.from("integration_state").select("value").eq("key", "ghl_sync").maybeSingle(),
   ]);
@@ -18,6 +19,7 @@ export default async function SettingsPage() {
     <div className="space-y-6">
       <PageHeader title="Settings" description="Response-time targets, business hours, and connections to other tools." />
       <SlaForm initial={slaFromJson(settings?.sla)} team={team ?? []} />
+      <SignInAccess domains={settings?.allowed_domains ?? []} blocked={settings?.blocked_emails ?? []} />
 
       <section className="max-w-3xl space-y-3 rounded-lg border border-zinc-200 bg-white p-5">
         <h2 className="text-sm font-semibold text-zinc-900">Connections</h2>

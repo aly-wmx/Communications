@@ -10,6 +10,16 @@ import type { ActionResult } from "@/lib/action-result";
 import type { Database } from "@/lib/supabase/database.types";
 import { memberFieldSchema, memberIdSchema } from "@/lib/validation/team";
 
+/** Removed addresses must not walk back in through "allowed sign-in domains". */
+async function blockAutoJoin(email: string) {
+  const address = email.trim().toLowerCase();
+  if (!address) return;
+  const supabase = await createClient();
+  const { data } = await supabase.from("settings").select("blocked_emails").eq("id", 1).maybeSingle();
+  const list = data?.blocked_emails ?? [];
+  if (!list.includes(address)) await supabase.from("settings").update({ blocked_emails: [...list, address] }).eq("id", 1);
+}
+
 /** Turn database refusals into something an admin can act on. */
 function explain(message: string, fallback: string): string {
   if (message.includes("at least one admin")) return "The portal needs at least one admin with an email.";
@@ -32,8 +42,10 @@ export async function updateMemberField(input: unknown): Promise<ActionResult> {
 
   const update = { [field]: value } as Database["public"]["Tables"]["team_members"]["Update"];
   const supabase = await createClient();
+  const { data: before } = field === "email" ? await supabase.from("team_members").select("email").eq("id", id).maybeSingle() : { data: null };
   const { error } = await supabase.from("team_members").update(update).eq("id", id);
   if (error) return { ok: false, error: explain(error.message, "Couldn't save that change.") };
+  if (field === "email" && before?.email && before.email.toLowerCase() !== String(value).toLowerCase()) await blockAutoJoin(before.email);
 
   revalidatePath("/dashboard", "layout");
   return { ok: true };
@@ -64,8 +76,10 @@ export async function deleteMember(input: unknown): Promise<ActionResult> {
   if (me?.memberId === parsed.data.id) return { ok: false, error: "You can't remove yourself." };
 
   const supabase = await createClient();
+  const { data: removed } = await supabase.from("team_members").select("email").eq("id", parsed.data.id).maybeSingle();
   const { error } = await supabase.from("team_members").delete().eq("id", parsed.data.id);
   if (error) return { ok: false, error: explain(error.message, "Couldn't remove that person.") };
+  if (removed?.email) await blockAutoJoin(removed.email);
 
   revalidatePath("/dashboard", "layout");
   return { ok: true };
