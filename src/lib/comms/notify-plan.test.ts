@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { acknowledge, awaitingPickup, createContact, escalate, reminderDue } from "./contacts";
-import { planEscalation, planNewMessage, planPickedUp, planReminder, responsible, type PlanContext, type PlanMember } from "./notify-plan";
+import { escapeSlack, planEscalation, planNewMessage, planPickedUp, planReminder, responsible, type PlanContext, type PlanMember } from "./notify-plan";
 import { defaultSla } from "./sla";
 
 const team: PlanMember[] = [
@@ -82,5 +82,14 @@ describe("contact rules", () => {
     expect(awaitingPickup(a)).toBe(false);
     expect(a.history.at(-1)?.message).toBe("Reid picked up the escalation");
     expect(acknowledge(a, "chris", members)).toBe(a); // nothing left to pick up
+  });
+});
+
+describe("escapeSlack", () => {
+  it("neutralises Slack control sequences in client text", () => {
+    expect(escapeSlack("<!channel> <https://evil.example|Reset password> & more")).toBe(
+      "&lt;!channel&gt; &lt;https://evil.example|Reset password&gt; &amp; more",
+    );
+    expect(escapeSlack("Plain message")).toBe("Plain message");
   });
 });

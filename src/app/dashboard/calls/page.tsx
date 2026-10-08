@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { getBusinessContext } from "@/lib/business";
+import { getSessionMember } from "@/lib/auth";
+import { canExport } from "@/lib/roles";
 import { loadCalls, RANGES, type Range } from "@/lib/comms/call-log";
 import { CALL_OUTCOMES, formatDuration, type CallOutcome } from "@/lib/comms/channels";
 import { slaFromJson } from "@/lib/comms/rows";
@@ -16,8 +18,9 @@ export default async function CallsPage({ searchParams }: PageProps<"/dashboard/
   const outcome = OUTCOMES.find((o) => o === sp.outcome) ?? "all";
   const dir = sp.dir === "inbound" || sp.dir === "outbound" ? sp.dir : "all";
 
-  const { current } = await getBusinessContext();
+  const [{ current }, me] = await Promise.all([getBusinessContext(), getSessionMember()]);
   if (!current) return null;
+  const exportable = me ? canExport(me.role) : false;
   const { data: settings } = await (await createClient()).from("settings").select("sla").eq("id", 1).maybeSingle();
   const tz = slaFromJson(settings?.sla).timeZone || "UTC";
   const all = await loadCalls(current.id, range, tz);
@@ -34,9 +37,11 @@ export default async function CallsPage({ searchParams }: PageProps<"/dashboard/
     <div className="space-y-5">
       <PageHeader title="Call Log" description={`Every call to and from clients — connected, missed, voicemail and failed. Times in ${tz.replace(/_/g, " ")}.`}>
         <div className="flex gap-2">
-          <a href={`/api/export/calls?range=${range}`} className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-zinc-400">
-            ⬇ Export CSV
-          </a>
+          {exportable && (
+            <a href={`/api/export/calls?range=${range}`} className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-zinc-400">
+              ⬇ Export CSV
+            </a>
+          )}
           <LogCall />
         </div>
       </PageHeader>

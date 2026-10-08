@@ -18,15 +18,22 @@ export function emailDomainAllowed(email: string, allowed: string[]): boolean {
 interface UserLike {
   email?: string | null;
   email_confirmed_at?: string | null;
-  app_metadata?: { provider?: string; providers?: string[] };
-  identities?: Array<{ provider?: string }> | null;
+  identities?: Array<{ provider?: string; identity_data?: { email?: unknown; email_verified?: unknown } }> | null;
 }
 
-/** Signed in with Google, whose address Google has already verified. */
-export function isGoogleVerified(user: UserLike): boolean {
-  const viaGoogle =
-    user.app_metadata?.provider === "google" ||
-    (user.app_metadata?.providers ?? []).includes("google") ||
-    (user.identities ?? []).some((i) => i.provider === "google");
-  return viaGoogle && Boolean(user.email_confirmed_at);
+/**
+ * The address Google itself verified, if it is still this account's email.
+ * "Has a Google identity" isn't enough: the account's email can be changed
+ * afterwards, so it must equal the Google identity's verified address.
+ */
+export function googleVerifiedEmail(user: UserLike): string | null {
+  const email = (user.email ?? "").trim().toLowerCase();
+  if (!email || !user.email_confirmed_at) return null;
+  const match = (user.identities ?? []).some((i) => {
+    if (i.provider !== "google") return false;
+    const data = i.identity_data ?? {};
+    const verified = data.email_verified === true || data.email_verified === "true";
+    return verified && typeof data.email === "string" && data.email.trim().toLowerCase() === email;
+  });
+  return match ? email : null;
 }

@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { getSessionMember } from "@/lib/auth";
+import { canExport } from "@/lib/roles";
 import { getBusinessContext } from "@/lib/business";
 import { loadCalls, RANGES, type Range } from "@/lib/comms/call-log";
 import { CALL_OUTCOMES, toCsv } from "@/lib/comms/channels";
@@ -10,6 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(req: NextRequest) {
   const me = await getSessionMember();
   if (!me) return new Response("Sign in first.", { status: 401 });
+  if (!canExport(me.role)) return new Response("Only managers and admins can export.", { status: 403 });
   const { current } = await getBusinessContext();
   if (!current) return new Response("No business.", { status: 404 });
 
@@ -34,6 +36,8 @@ export async function GET(req: NextRequest) {
     ]),
   );
   const date = new Date().toISOString().slice(0, 10);
+  // Audit trail in the server logs: who downloaded client data, and how much.
+  console.info(`[export] ${me.email} exported calls (${range}, ${calls.length} rows)`);
   return new Response(`﻿${csv}`, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

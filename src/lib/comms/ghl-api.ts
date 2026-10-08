@@ -161,6 +161,18 @@ export async function upsertGhlContact(
 }
 
 /** Update a GHL contact's name, phone and email to match the portal. */
+/** The id of an existing GHL contact with this email, or null. Looks only; never creates or changes anything. */
+export async function findGhlContactByEmail(token: string, locationId: string, email: string): Promise<string | null> {
+  const qs = new URLSearchParams({ locationId, email });
+  const res = await fetch(`${GHL}/contacts/search/duplicate?${qs}`, {
+    headers: { Authorization: `Bearer ${token}`, Version: "2021-07-28", Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new GhlError(res.status, `Couldn't search GoHighLevel contacts (error ${res.status}).`);
+  const body = (await res.json()) as { contact?: { id?: unknown } | null };
+  return typeof body.contact?.id === "string" ? body.contact.id : null;
+}
+
 /** A GHL contact's email address (lowercased), used to check who a message would really go to. */
 export async function ghlContactEmail(token: string, contactId: string): Promise<string> {
   const res = await fetch(`${GHL}/contacts/${encodeURIComponent(contactId)}`, {

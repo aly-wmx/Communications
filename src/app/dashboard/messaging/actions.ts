@@ -12,6 +12,7 @@ import { contactFromRow, contactPatch } from "@/lib/comms/rows";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/database.types";
 import { newConversationSchema, replySchema } from "@/lib/validation/messaging";
+import { sendBlockedReason, type SendUsage } from "@/lib/comms/send-guard";
 
 export type SendResult = { ok: true; clientId: string } | { ok: false; error: string };
 
@@ -98,6 +99,28 @@ async function sendAndRecord(
   }
 }
 
+/** What the send guardrails need: is this person allowed to send, and how much have they sent in the last hour. */
+async function sendUsage(sb: Db, me: SessionMember): Promise<SendUsage> {
+  const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const [{ data: member }, { data: sent }] = await Promise.all([
+    sb.from("team_members").select("can_send").eq("id", me.memberId).maybeSingle(),
+    sb
+      .from("messages")
+      .select("client_id")
+      .eq("source", `portal:${me.name}`)
+      .eq("direction", "outbound")
+      .gte("occurred_at", hourAgo)
+      .limit(500),
+  ]);
+  const clientIds = [...new Set((sent ?? []).map((m) => m.client_id))];
+  const { count } = clientIds.length
+    ? await sb.from("clients").select("id", { count: "exact", head: true }).in("id", clientIds).gte("created_at", hourAgo)
+    : { count: 0 };
+  return { canSend: member?.can_send ?? false, sentLastHour: sent?.length ?? 0, newContactsLastHour: count ?? 0 };
+}
+
+const SPAM_BLOCK = "This client is archived as spam. Restore them from Archived before messaging them.";
+
 function failure(err: unknown): { ok: false; error: string } {
   if (err instanceof GhlError) return { ok: false, error: err.message };
   console.error("send failed", err);
@@ -114,11 +137,20 @@ export async function sendReply(input: unknown): Promise<SendResult> {
 
   // Read with the signed-in user's access (RLS), then write with the server's.
   const supabase = await createClient();
-  const { data: client } = await supabase.from("clients").select("id, name, phone, email, ghl_contact_id").eq("id", clientId).maybeSingle();
+  const { data: client } = await supabase
+    .from("clients")
+    .select("id, name, phone, email, ghl_contact_id, archive_reason")
+    .eq("id", clientId)
+    .maybeSingle();
   if (!client) return { ok: false, error: "That client no longer exists." };
+  if (client.archive_reason === "spam") return { ok: false, error: SPAM_BLOCK };
+
+  const sb = serviceDb();
+  const blocked = sendBlockedReason(await sendUsage(sb, me), { newContact: false });
+  if (blocked) return { ok: false, error: blocked };
 
   try {
-    await sendAndRecord(serviceDb(), me, client, msg);
+    await sendAndRecord(sb, me, client, msg);
   } catch (err) {
     return failure(err);
   }
@@ -139,11 +171,19 @@ export async function startConversation(input: unknown): Promise<SendResult> {
   const sb = serviceDb();
   let client: ClientForSend | null;
 
+  const blocked = sendBlockedReason(await sendUsage(sb, me), { newContact: v.mode === "new" });
+  if (blocked) return { ok: false, error: blocked };
+
   try {
     if (v.mode === "existing") {
-      const { data } = await supabase.from("clients").select("id, name, phone, email, ghl_contact_id").eq("id", v.clientId).maybeSingle();
+      const { data } = await supabase
+        .from("clients")
+        .select("id, name, phone, email, ghl_contact_id, archive_reason")
+        .eq("id", v.clientId)
+        .maybeSingle();
+      if (!data) return { ok: false, error: "That client no longer exists." };
+      if (data.archive_reason === "spam") return { ok: false, error: SPAM_BLOCK };
       client = data;
-      if (!client) return { ok: false, error: "That client no longer exists." };
     } else {
       const phone = v.phone ? toE164(v.phone) : "";
       if (v.phone && !phone) return { ok: false, error: "That phone number doesn't look right. Include the area code." };

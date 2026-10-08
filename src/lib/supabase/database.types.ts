@@ -351,6 +351,7 @@ export type Database = {
       };
       team_members: {
         Row: {
+          can_send: boolean;
           created_at: string;
           department: string;
           email: string;
@@ -364,6 +365,7 @@ export type Database = {
           slack_user_id: string;
         };
         Insert: {
+          can_send?: boolean;
           created_at?: string;
           department?: string;
           email?: string;
@@ -377,6 +379,7 @@ export type Database = {
           slack_user_id?: string;
         };
         Update: {
+          can_send?: boolean;
           created_at?: string;
           department?: string;
           email?: string;

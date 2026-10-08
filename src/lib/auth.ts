@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { randomUUID } from "node:crypto";
 import { isRole, type Role } from "@/lib/roles";
-import { emailDomainAllowed, isGoogleVerified } from "@/lib/signin-domains";
+import { emailDomainAllowed, googleVerifiedEmail } from "@/lib/signin-domains";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import type { ActionResult } from "@/lib/action-result";
 
@@ -48,18 +48,19 @@ export async function checkSession(): Promise<SessionCheckResult> {
 
 /**
  * A Google-verified account on an allowed domain (Settings → Allowed sign-in
- * domains) joins as a coordinator; admins are told. Runs once, on first sign-in.
+ * domains) joins as a coordinator who can't send to clients until an admin
+ * allows it; admins are told. Runs once, on first sign-in.
  */
 async function autoJoin(user: {
   id: string;
   email?: string | null;
   email_confirmed_at?: string | null;
-  app_metadata?: { provider?: string; providers?: string[] };
-  identities?: Array<{ provider?: string }> | null;
+  identities?: Array<{ provider?: string; identity_data?: { email?: unknown; email_verified?: unknown } }> | null;
   user_metadata?: { full_name?: string; name?: string };
 }): Promise<SessionMember | null> {
-  const email = (user.email ?? "").trim().toLowerCase();
-  if (!email || !isGoogleVerified(user) || !process.env.SUPABASE_SERVICE_ROLE_KEY) return null;
+  // Only the address Google verified counts, never an email changed on the account afterwards.
+  const email = googleVerifiedEmail(user);
+  if (!email || !process.env.SUPABASE_SERVICE_ROLE_KEY) return null;
 
   // Not a team member yet, so RLS hides settings from them: read with the server's access.
   const admin = createServiceRoleClient();
@@ -73,7 +74,7 @@ async function autoJoin(user: {
 
   const name = (user.user_metadata?.full_name || user.user_metadata?.name || email.split("@")[0]).trim().slice(0, 120);
   const id = `tm_${randomUUID()}`;
-  const { error } = await admin.from("team_members").insert({ id, name, email, role: "coordinator" });
+  const { error } = await admin.from("team_members").insert({ id, name, email, role: "coordinator", can_send: false });
   if (error) {
     // Someone added them at the same moment: use that record.
     const { data: existing } = await admin.from("team_members").select("id, name, email, role").eq("email", email).maybeSingle();
@@ -87,7 +88,7 @@ async function autoJoin(user: {
         recipient_id: a.id,
         kind: "mention",
         title: `${name} joined the portal`,
-        body: `Signed in with Google as ${email} (allowed domain) and was added as a Coordinator. Change their role or remove them on the Team page.`,
+        body: `Signed in with Google as ${email} (allowed domain) and was added as a Coordinator who can't message clients yet. Turn on "Can send" or remove them on the Team page.`,
         link: "/dashboard/team",
         // Sent by email/Slack only if Settings → Notifications says so for mentions.
         ...(settings?.dm_kinds.includes("mention") ? {} : { slack_status: "skipped" as const }),

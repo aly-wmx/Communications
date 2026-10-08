@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { getBusinessContext } from "@/lib/business";
+import { getSessionMember } from "@/lib/auth";
+import { canExport } from "@/lib/roles";
 import { loadQueue } from "@/lib/comms/load";
 import { buildReport, REPORT_RANGES, type ReportRange } from "@/lib/comms/reports";
 import { formatMinutes } from "@/lib/comms/sla";
@@ -23,8 +25,9 @@ function Tile({ label, value, note }: { label: string; value: string | number; n
 export default async function ReportsPage({ searchParams }: PageProps<"/dashboard/reports">) {
   const sp = await searchParams;
   const range = (typeof sp.range === "string" && sp.range in REPORT_RANGES ? sp.range : "30d") as ReportRange;
-  const { current } = await getBusinessContext();
+  const [{ current }, me] = await Promise.all([getBusinessContext(), getSessionMember()]);
   if (!current) return null;
+  const exportable = me ? canExport(me.role) : false;
 
   const [{ contacts, sla }, { data: team }] = await Promise.all([
     loadQueue(current.id),
@@ -42,9 +45,11 @@ export default async function ReportsPage({ searchParams }: PageProps<"/dashboar
         title="Reports"
         description={`How quickly clients get a first response. Times count business hours (${(sla.timeZone || "UTC").replace(/_/g, " ")}); the target is ${target}. Spam and archived clients are left out.`}
       >
-        <a href={`/api/export/contacts?range=${range}`} className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-zinc-400">
-          ⬇ Export CSV
-        </a>
+        {exportable && (
+          <a href={`/api/export/contacts?range=${range}`} className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-zinc-400">
+            ⬇ Export CSV
+          </a>
+        )}
       </PageHeader>
 
       <nav className="flex flex-wrap gap-2 text-sm" aria-label="Time range">

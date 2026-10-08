@@ -1,6 +1,6 @@
 "use server";
 
-import { headers } from "next/headers";
+import { siteUrl } from "@/lib/comms/notify-store";
 import { createClient } from "@/lib/supabase/server";
 import { emailSchema } from "@/lib/validation/auth";
 
@@ -18,10 +18,8 @@ export async function requestPasswordReset(
     return { status: "error", error: "Enter a valid email address." };
   }
 
-  const headersList = await headers();
-  const host = headersList.get("host") ?? "localhost:3000";
-  const protocol = host.startsWith("localhost") ? "http" : "https";
-  const origin = `${protocol}://${host}`;
+  // Fixed site address, never the request's Host header (which a caller can set).
+  const origin = siteUrl();
 
   const supabase = await createClient();
   await supabase.auth.resetPasswordForEmail(parsed.data.email, {

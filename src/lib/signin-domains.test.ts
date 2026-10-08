@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emailDomainAllowed, isGoogleVerified, normaliseDomain } from "./signin-domains";
+import { emailDomainAllowed, googleVerifiedEmail, normaliseDomain } from "./signin-domains";
 
 describe("sign-in domains", () => {
   const allowed = ["watermarkdesignbuild.com"];
@@ -19,10 +19,16 @@ describe("sign-in domains", () => {
     expect(normaliseDomain("https://x.com")).toBeNull();
   });
 
-  it("requires a Google-verified account", () => {
-    expect(isGoogleVerified({ email_confirmed_at: "2026-10-08", app_metadata: { provider: "google" } })).toBe(true);
-    expect(isGoogleVerified({ email_confirmed_at: "2026-10-08", identities: [{ provider: "google" }] })).toBe(true);
-    expect(isGoogleVerified({ email_confirmed_at: "2026-10-08", app_metadata: { provider: "email" } })).toBe(false);
-    expect(isGoogleVerified({ email_confirmed_at: null, app_metadata: { provider: "google" } })).toBe(false);
+  it("only trusts the address Google verified, and only while it is still the account's email", () => {
+    const google = (email: string, email_verified: unknown = true) => ({ provider: "google", identity_data: { email, email_verified } });
+    const at = "2026-10-08";
+    expect(googleVerifiedEmail({ email: "Van@WatermarkDesignBuild.com", email_confirmed_at: at, identities: [google("van@watermarkdesignbuild.com")] })).toBe(
+      "van@watermarkdesignbuild.com",
+    );
+    // Google account is a gmail; the account email was changed to the company domain afterwards.
+    expect(googleVerifiedEmail({ email: "x@watermarkdesignbuild.com", email_confirmed_at: at, identities: [google("x@gmail.com")] })).toBeNull();
+    expect(googleVerifiedEmail({ email: "a@watermarkdesignbuild.com", email_confirmed_at: at, identities: [google("a@watermarkdesignbuild.com", false)] })).toBeNull();
+    expect(googleVerifiedEmail({ email: "a@watermarkdesignbuild.com", email_confirmed_at: at, identities: [{ provider: "email" }] })).toBeNull();
+    expect(googleVerifiedEmail({ email: "a@watermarkdesignbuild.com", email_confirmed_at: null, identities: [google("a@watermarkdesignbuild.com")] })).toBeNull();
   });
 });

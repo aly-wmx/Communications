@@ -29,6 +29,7 @@ export const memberFieldSchema = z.discriminatedUnion("field", [
   }),
   z.object({ id: z.string().min(1), field: z.literal("role"), value: z.enum(ROLES) }),
   z.object({ id: z.string().min(1), field: z.literal("escalation"), value: z.boolean() }),
+  z.object({ id: z.string().min(1), field: z.literal("can_send"), value: z.boolean() }),
   z.object({ id: z.string().min(1), field: z.literal("department"), value: z.enum(["", "sales", "design", "construction", "client_care"]) }),
 ]);
 

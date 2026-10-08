@@ -36,13 +36,11 @@ export function webhookSecretOk(req: Request): boolean {
 }
 
 /**
- * Scheduled jobs and server checks: header x-sync-secret against CRON_SECRET.
- * Until CRON_SECRET is set in Vercel, GHL_WEBHOOK_SECRET is still accepted so the jobs keep running.
+ * Scheduled jobs and server checks: header x-sync-secret against CRON_SECRET only.
+ * The GHL webhook secret travels in a URL, so it never opens these routes; with no CRON_SECRET set, they stay shut.
  */
 export function cronSecretOk(req: Request): boolean {
-  const given = req.headers.get("x-sync-secret") ?? "";
-  const cron = process.env.CRON_SECRET ?? "";
-  return cron ? matches(given, cron) : matches(given, process.env.GHL_WEBHOOK_SECRET ?? "");
+  return matches(req.headers.get("x-sync-secret") ?? "", process.env.CRON_SECRET ?? "");
 }
 
 /** The business new clients go to: the one asked for if it exists, otherwise the oldest (Watermark). */

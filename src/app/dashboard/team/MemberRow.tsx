@@ -23,13 +23,15 @@ export function MemberRow({
 }) {
   const [pending, startTransition] = useTransition();
   const [escalation, setEscalation] = useState(member.escalation);
+  const [canSend, setCanSend] = useState(member.can_send);
 
-  function handleEscalation(next: boolean) {
-    setEscalation(next);
+  function handleToggle(field: "escalation" | "can_send", next: boolean) {
+    const set = field === "escalation" ? setEscalation : setCanSend;
+    set(next);
     startTransition(async () => {
-      const result = await updateMemberField({ id: member.id, field: "escalation", value: next });
+      const result = await updateMemberField({ id: member.id, field, value: next });
       if (!result.ok) {
-        setEscalation(!next);
+        set(!next);
         onMessage(result.error, "error");
       }
     });
@@ -101,10 +103,21 @@ export function MemberRow({
           type="checkbox"
           checked={escalation}
           disabled={pending}
-          onChange={(e) => handleEscalation(e.target.checked)}
+          onChange={(e) => handleToggle("escalation", e.target.checked)}
           aria-label={`${member.name} receives escalations`}
           className="size-4 accent-[#B08D57]"
         />
+      </td>
+      <td className="px-3 py-2 text-center">
+        <input
+          type="checkbox"
+          checked={canSend}
+          disabled={pending}
+          onChange={(e) => handleToggle("can_send", e.target.checked)}
+          aria-label={`${member.name} can send texts and emails to clients`}
+          className="size-4 accent-[#B08D57]"
+        />
+        {!canSend && <p className="mt-0.5 text-[11px] font-medium text-amber-700">Waiting for approval</p>}
       </td>
       <td className="whitespace-nowrap px-2 py-2 text-right">
         {member.email && !isMe && (

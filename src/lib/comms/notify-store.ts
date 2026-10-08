@@ -1,8 +1,8 @@
 import "server-only";
 import { escalate, reminderDue } from "./contacts";
-import { ghlConfig, ghlContactEmail, sendGhlMessage, upsertGhlContact } from "./ghl-api";
+import { addGhlTags, findGhlContactByEmail, ghlConfig, ghlContactEmail, GhlError, sendGhlMessage, upsertGhlContact } from "./ghl-api";
 import type { Db } from "./ghl-store";
-import { DEFAULT_DELIVERY, planEscalation, planReminder, type DeliveryRules, type PlanContext, type PlanMember, type PlannedNotification } from "./notify-plan";
+import { DEFAULT_DELIVERY, escapeSlack, planEscalation, planReminder, type DeliveryRules, type PlanContext, type PlanMember, type PlannedNotification } from "./notify-plan";
 import { textToHtml } from "./outbound";
 import { contactFromRow, contactPatch, slaFromJson } from "./rows";
 import { needsEscalation, slaState } from "./sla";
@@ -202,8 +202,15 @@ function wants(prefs: Prefs, kind: string): boolean {
   return true;
 }
 
-async function sendSlack(token: string, userId: string, n: { title: string; body: string; link: string; urgent: boolean }) {
-  const url = `${siteUrl()}${n.link}`;
+async function sendSlack(
+  token: string,
+  userId: string,
+  raw: { title: string; body: string; link: string; urgent: boolean },
+  /** Our own "<@U123>" tags, added after escaping so they still work. */
+  mentions = "",
+) {
+  const url = `${siteUrl()}${raw.link}`;
+  const n = { ...raw, title: escapeSlack(raw.title), body: [escapeSlack(raw.body), mentions].filter(Boolean).join("\n") };
   const res = await fetch("https://slack.com/api/chat.postMessage", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json; charset=utf-8" },
@@ -221,9 +228,28 @@ async function sendSlack(token: string, userId: string, n: { title: string; body
   if (!body.ok) throw new Error(`Slack: ${body.error ?? res.status}`);
 }
 
+/**
+ * The teammate's own GHL contact, used only to email them notifications.
+ * Never adopts a client: if a GHL contact with this email is already a client
+ * in the portal, nothing is sent (otherwise that client's messages would start
+ * being treated as a teammate's and vanish from the queue).
+ */
 async function teamContactId(sb: Db, member: TeamRow, token: string, locationId: string): Promise<string> {
   if (member.ghl_contact_id) return member.ghl_contact_id;
-  const { id } = await upsertGhlContact(token, locationId, { name: member.name, phone: "", email: member.email }, [TEAM_TAG]);
+  const existing = await findGhlContactByEmail(token, locationId, member.email);
+  let id: string;
+  if (existing) {
+    const { data: asClient } = await sb.from("clients").select("name").eq("ghl_contact_id", existing).limit(1).maybeSingle();
+    if (asClient) {
+      throw new Error(
+        `Not sent: ${member.email} is the client “${asClient.name}” in GoHighLevel. Give ${member.name} their own email on the Team page, or archive that client if it's really them.`,
+      );
+    }
+    await addGhlTags(token, existing, [TEAM_TAG]);
+    id = existing;
+  } else {
+    ({ id } = await upsertGhlContact(token, locationId, { name: member.name, phone: "", email: member.email }, [TEAM_TAG]));
+  }
   await sb.from("team_members").update({ ghl_contact_id: id }).eq("id", member.id);
   member.ghl_contact_id = id;
   return id;
@@ -235,10 +261,23 @@ async function teamContactId(sb: Db, member: TeamRow, token: string, locationId:
  * a client. A mismatched link is cleared and the email is not sent.
  */
 async function assertOwnContact(sb: Db, member: TeamRow, contactId: string, token: string) {
-  const contactEmail = await ghlContactEmail(token, contactId);
+  const forget = async () => {
+    await sb.from("team_members").update({ ghl_contact_id: null }).eq("id", member.id);
+    member.ghl_contact_id = null;
+  };
+  let contactEmail: string;
+  try {
+    contactEmail = await ghlContactEmail(token, contactId);
+  } catch (err) {
+    // Deleted in GHL: forget it so the next attempt finds or creates their contact again.
+    if (err instanceof GhlError && (err.status === 404 || err.status === 400)) {
+      await forget();
+      throw new Error(`${member.name}'s GoHighLevel contact no longer exists; it will be re-linked on the next try.`);
+    }
+    throw err;
+  }
   if (contactEmail && contactEmail === member.email.trim().toLowerCase()) return;
-  await sb.from("team_members").update({ ghl_contact_id: null }).eq("id", member.id);
-  member.ghl_contact_id = null;
+  await forget();
   throw new Error(`Blocked: GoHighLevel contact ${contactId} isn't ${member.email}. Portal notifications only go to team members.`);
 }
 
@@ -273,14 +312,14 @@ async function dispatchChannel(sb: Db, team: TeamRow[]): Promise<number> {
     const tags = p.mention_member_ids
       .map((id) => team.find((t) => t.id === id))
       .filter((t): t is TeamRow => Boolean(t))
-      .map((t) => (t.slack_user_id ? `<@${t.slack_user_id}>` : t.name));
+      .map((t) => (t.slack_user_id ? `<@${t.slack_user_id}>` : escapeSlack(t.name)));
     try {
-      await sendSlack(token, settings.slack_channel_id, {
-        title: p.title,
-        body: [p.body, tags.length ? `For: ${tags.join(" ")}` : ""].filter(Boolean).join("\n"),
-        link: p.link,
-        urgent: p.urgent,
-      });
+      await sendSlack(
+        token,
+        settings.slack_channel_id,
+        { title: p.title, body: p.body, link: p.link, urgent: p.urgent },
+        tags.length ? `For: ${tags.join(" ")}` : "",
+      );
       await sb.from("slack_channel_posts").update({ status: "sent", attempts: p.attempts + 1 }).eq("id", p.id);
       sent++;
     } catch (err) {

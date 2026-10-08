@@ -47,6 +47,9 @@ export interface PlanContext {
   defaultAssigneeId: string;
 }
 
+/** Slack's required escaping: client text can't ping @channel or hide a link behind other words. */
+export const escapeSlack = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 const quote = (s: string) => (s ? `“${s.length > 140 ? `${s.slice(0, 140)}…` : s}”` : "");
 const unique = (ids: string[]) => [...new Set(ids.filter(Boolean))];
 

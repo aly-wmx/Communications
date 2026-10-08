@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { headers } from "next/headers";
+import { siteUrl } from "@/lib/comms/notify-store";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
@@ -105,8 +105,8 @@ export async function inviteMember(input: unknown): Promise<ActionResult> {
   const { data: member } = await supabase.from("team_members").select("email").eq("id", parsed.data.id).maybeSingle();
   if (!member?.email) return { ok: false, error: "Add their email first." };
 
-  const host = (await headers()).get("host") ?? "localhost:3000";
-  const origin = `${host.startsWith("localhost") ? "http" : "https"}://${host}`;
+  // Fixed site address, never the request's Host header (which a caller can set).
+  const origin = siteUrl();
 
   const admin = createServiceRoleClient();
   const { error } = await admin.auth.admin.inviteUserByEmail(member.email, { redirectTo: `${origin}/reset-password` });
