@@ -128,7 +128,7 @@ export function NotificationBell({ onIncoming }: { onIncoming?: (n: Item) => voi
                     onClick={() => {
                       void markRead([n.id]);
                       setOpen(false);
-                      router.push(n.link || "/dashboard/queue");
+                      router.push(n.link || "/dashboard/inbox?view=waiting");
                     }}
                     className={`flex w-full gap-2 px-3 py-2.5 text-left hover:bg-zinc-50 ${n.read_at ? "" : "bg-[#B08D570d]"}`}
                   >

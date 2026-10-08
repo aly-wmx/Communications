@@ -21,12 +21,13 @@ export function TeamTable({ members, meId }: { members: Member[]; meId: string }
 
   return (
     <div className="overflow-x-auto rounded-md border border-zinc-200 bg-white">
-      <table className="w-full min-w-[860px] text-sm">
+      <table className="w-full min-w-[980px] text-sm">
         <thead>
           <tr className="border-b border-zinc-200 text-left text-xs uppercase text-zinc-500">
             <th className="px-3 py-2">Name</th>
             <th className="px-3 py-2">Email (sign-in)</th>
             <th className="px-3 py-2">Role</th>
+            <th className="px-3 py-2">Department</th>
             <th className="px-3 py-2">Phone</th>
             <th className="px-3 py-2">Slack member ID</th>
             <th className="px-3 py-2 text-center">Escalations</th>

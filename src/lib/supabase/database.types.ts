@@ -42,6 +42,8 @@ export type Database = {
           owner_id: string | null;
           phone: string;
           project: string;
+          stage: string | null;
+          stage_changed_at: string | null;
         };
         Insert: {
           archive_reason?: string | null;
@@ -57,6 +59,8 @@ export type Database = {
           owner_id?: string | null;
           phone?: string;
           project?: string;
+          stage?: string | null;
+          stage_changed_at?: string | null;
         };
         Update: {
           archive_reason?: string | null;
@@ -72,6 +76,8 @@ export type Database = {
           owner_id?: string | null;
           phone?: string;
           project?: string;
+          stage?: string | null;
+          stage_changed_at?: string | null;
         };
         Relationships: [
           {
@@ -89,6 +95,12 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      client_stage_history: {
+        Row: { changed_at: string; changed_by: string; client_id: string; from_stage: string | null; id: string; to_stage: string | null };
+        Insert: { changed_at?: string; changed_by?: string; client_id: string; from_stage?: string | null; id?: string; to_stage?: string | null };
+        Update: { changed_at?: string; changed_by?: string; client_id?: string; from_stage?: string | null; id?: string; to_stage?: string | null };
+        Relationships: [];
       };
       contacts: {
         Row: {
@@ -316,6 +328,7 @@ export type Database = {
       team_members: {
         Row: {
           created_at: string;
+          department: string;
           email: string;
           escalation: boolean;
           ghl_contact_id: string | null;
@@ -327,6 +340,7 @@ export type Database = {
         };
         Insert: {
           created_at?: string;
+          department?: string;
           email?: string;
           escalation?: boolean;
           ghl_contact_id?: string | null;
@@ -338,6 +352,7 @@ export type Database = {
         };
         Update: {
           created_at?: string;
+          department?: string;
           email?: string;
           escalation?: boolean;
           ghl_contact_id?: string | null;
@@ -366,6 +381,7 @@ export type Database = {
           owner_id: string | null;
           phone: string;
           project: string;
+          stage: string | null;
           waiting: number;
         };
         Relationships: [];

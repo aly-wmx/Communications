@@ -60,7 +60,7 @@ export async function saveNotifications(
   about: { contactId?: string; clientId?: string },
 ): Promise<number> {
   if (!planned.length) return 0;
-  const link = about.clientId ? `/dashboard/clients/${about.clientId}` : "/dashboard/queue";
+  const link = about.clientId ? `/dashboard/inbox?view=all&dept=all&c=${about.clientId}` : "/dashboard/inbox";
   const { error } = await sb.from("notifications").insert(
     planned.map((p) => ({
       recipient_id: p.recipientId,

@@ -88,7 +88,7 @@ export function LiveUpdates({
   const pathname = usePathname();
   const onClientsPage = useRef(false);
   useEffect(() => {
-    onClientsPage.current = pathname.startsWith("/dashboard/clients");
+    onClientsPage.current = pathname.startsWith("/dashboard/clients") || pathname.startsWith("/dashboard/inbox");
   }, [pathname]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [connected, setConnected] = useState(false);
@@ -143,7 +143,7 @@ export function LiveUpdates({
         });
         n.onclick = () => {
           window.focus();
-          router.push("/dashboard/queue");
+          router.push("/dashboard/inbox?view=waiting");
           n.close();
         };
       }
@@ -288,7 +288,7 @@ export function LiveUpdates({
             <p className="mt-0.5 text-sm font-semibold text-zinc-900">{t.clientName}</p>
             {t.body && <p className="mt-0.5 line-clamp-2 text-sm text-zinc-600">{t.body}</p>}
             <Link
-              href={t.link || "/dashboard/queue"}
+              href={t.link || "/dashboard/inbox?view=waiting"}
               onClick={() => dismiss(t.key)}
               className="mt-2 inline-block text-xs font-semibold text-[#B08D57] hover:underline"
             >

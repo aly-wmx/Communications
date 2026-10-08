@@ -7,7 +7,8 @@ import { addGhlTags, ghlConfig, GhlError, removeGhlTags, updateGhlContact } from
 import { contactFromRow, contactPatch } from "@/lib/comms/rows";
 import { toE164 } from "@/lib/comms/outbound";
 import { createClient } from "@/lib/supabase/server";
-import { archiveSchema, clientUpdateSchema } from "@/lib/validation/clients";
+import { archiveSchema, clientUpdateSchema, stageSchema } from "@/lib/validation/clients";
+import { isStage, stageTag } from "@/lib/stages";
 
 export type UpdateClientResult = { ok: true; warning?: string } | { ok: false; error: string };
 
@@ -156,6 +157,38 @@ export async function restoreClient(input: unknown): Promise<UpdateClientResult>
       } catch (err) {
         return { ok: true, warning: `Restored here, but the GoHighLevel "spam" tag couldn't be removed: ${err instanceof GhlError ? err.message : "no response"}` };
       }
+    }
+  }
+  return { ok: true };
+}
+
+/** Move a client to a stage; keeps a history and mirrors the stage as a GHL tag. */
+export async function setClientStage(input: unknown): Promise<UpdateClientResult> {
+  const me = await getSessionMember();
+  if (!me) return { ok: false, error: "You're not signed in as a team member." };
+  const parsed = stageSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Choose a valid stage." };
+  const { clientId, stage } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: client } = await supabase.from("clients").select("id, stage, ghl_contact_id").eq("id", clientId).maybeSingle();
+  if (!client) return { ok: false, error: "That client no longer exists." };
+  if (client.stage === stage) return { ok: true };
+
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("clients").update({ stage, stage_changed_at: now }).eq("id", clientId);
+  if (error) return { ok: false, error: "Couldn't change the stage." };
+  await supabase.from("client_stage_history").insert({ client_id: clientId, from_stage: client.stage, to_stage: stage, changed_by: me.memberId, changed_at: now });
+  revalidatePath("/dashboard", "layout");
+
+  if (client.ghl_contact_id) {
+    const { token, missing } = ghlConfig();
+    if (missing.length) return { ok: true, warning: "Stage saved; GoHighLevel isn't connected, so the tag wasn't updated." };
+    try {
+      if (client.stage && isStage(client.stage)) await removeGhlTags(token, client.ghl_contact_id, [stageTag(client.stage)]);
+      if (stage) await addGhlTags(token, client.ghl_contact_id, [stageTag(stage)]);
+    } catch (err) {
+      return { ok: true, warning: `Stage saved here, but the GoHighLevel tag wasn't updated: ${err instanceof GhlError ? err.message : "no response"}` };
     }
   }
   return { ok: true };

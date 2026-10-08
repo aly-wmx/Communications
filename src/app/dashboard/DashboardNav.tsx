@@ -8,11 +8,9 @@ type Tab = { href: string; label: string; adminOnly?: boolean };
 
 const MAIN: Tab[] = [
   { href: "/dashboard", label: "Overview" },
-  { href: "/dashboard/queue", label: "Client Queue" },
+  { href: "/dashboard/inbox", label: "Inbox" },
   { href: "/dashboard/escalations", label: "Escalations" },
-  { href: "/dashboard/clients", label: "Clients" },
   { href: "/dashboard/calls", label: "Call Log" },
-  { href: "/dashboard/announcements", label: "Announcements" },
   { href: "/dashboard/reports", label: "Reports" },
   { href: "/dashboard/archived", label: "Archived" },
   { href: "/dashboard/notifications", label: "Notifications" },
@@ -30,7 +28,7 @@ export function DashboardNav({ role, queueBadge, escalationBadge }: { role: Role
   const link = (tab: Tab) => {
     // "/dashboard" must match exactly, or it would be active on every nested route.
     const active = tab.href === "/dashboard" ? pathname === tab.href : pathname.startsWith(tab.href);
-    const count = tab.href === "/dashboard/queue" ? queueBadge : tab.href === "/dashboard/escalations" ? escalationBadge : 0;
+    const count = tab.href === "/dashboard/inbox" ? queueBadge : tab.href === "/dashboard/escalations" ? escalationBadge : 0;
     const badge = count > 0 ? count : null;
     return (
       <Link

@@ -3,12 +3,14 @@
 import { useState, useTransition } from "react";
 import { EditableSelectCell, EditableTextCell } from "@/components/EditableCell";
 import { ROLES, ROLE_LABELS } from "@/lib/roles";
+import { DEPARTMENTS } from "@/lib/stages";
 import type { Database } from "@/lib/supabase/database.types";
 import { deleteMember, inviteMember, updateMemberField } from "./actions";
 
 type Member = Database["public"]["Tables"]["team_members"]["Row"];
 
 const ROLE_OPTIONS = ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }));
+const DEPARTMENT_OPTIONS = [{ value: "", label: "All departments" }, ...Object.entries(DEPARTMENTS).map(([value, d]) => ({ value, label: d.label }))];
 
 export function MemberRow({
   member,
@@ -76,6 +78,13 @@ export function MemberRow({
             onSave={(value) => updateMemberField({ id: member.id, field: "role", value })}
           />
         )}
+      </td>
+      <td className="px-1.5 py-1">
+        <EditableSelectCell
+          value={member.department}
+          options={DEPARTMENT_OPTIONS}
+          onSave={(value) => updateMemberField({ id: member.id, field: "department", value })}
+        />
       </td>
       <td className="px-1.5 py-1">
         <EditableTextCell value={member.phone} onSave={(value) => updateMemberField({ id: member.id, field: "phone", value })} />

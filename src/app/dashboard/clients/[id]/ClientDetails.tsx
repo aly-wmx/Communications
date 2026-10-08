@@ -57,7 +57,7 @@ export function ClientDetails({
     startTransition(async () => {
       const result = await deleteClient(client.id);
       if (!result.ok) return setMessage({ text: result.error, tone: "error" });
-      router.push("/dashboard/clients");
+      router.push("/dashboard/inbox");
     });
   }
 

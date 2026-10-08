@@ -21,3 +21,20 @@ export const archiveSchema = z.object({
   clientId: z.string().min(1).max(100),
   reason: z.enum(["spam", "archived"]),
 });
+
+export const stageSchema = z.object({
+  clientId: z.string().min(1).max(100),
+  stage: z
+    .enum([
+      "New Lead",
+      "Feasibility & Vision Mapping",
+      "Architectural & Design Studio",
+      "Pre-Production & Permitting",
+      "Active Construction",
+      "Client Care & Warranty",
+      "Lost Lead",
+      "Archive",
+      "Legacy",
+    ])
+    .nullable(),
+});
