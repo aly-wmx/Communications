@@ -54,11 +54,13 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
   const stage = isStage(sp.stage) ? sp.stage : "";
   const q = typeof sp.q === "string" ? sp.q.trim().slice(0, 80) : "";
   const selected = typeof sp.c === "string" ? sp.c : "";
+  // Newest client message first (default), or longest-waiting first.
+  const sort = sp.sort === "waiting" ? "waiting" : "newest";
   const beforeRaw = typeof sp.before === "string" ? sp.before : "";
   const before = beforeRaw && !Number.isNaN(Date.parse(beforeRaw)) ? new Date(beforeRaw).toISOString() : "";
 
   const params = (patch: Record<string, string>) => {
-    const p = new URLSearchParams({ view, dept, ...(stage && { stage }), ...(q && { q }), ...patch });
+    const p = new URLSearchParams({ view, dept, ...(stage && { stage }), ...(q && { q }), ...(sort === "waiting" && { sort }), ...patch });
     for (const [k, v] of [...p.entries()]) if (!v) p.delete(k);
     return `/dashboard/inbox?${p}`;
   };
@@ -81,9 +83,12 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
 
   let query = supabase
     .from("client_overview")
-    .select("id, name, project, phone, email, stage, last_message_at, last_direction, last_channel, last_body, waiting")
+    .select(
+      "id, name, project, phone, email, stage, last_message_at, last_direction, last_channel, last_body, waiting, last_in_at, last_in_channel, last_in_body, last_in_source, last_in_attachments",
+    )
     .eq("business_id", current.id)
     .is("archived_at", null)
+    .order("last_in_at", { ascending: false, nullsFirst: false })
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .limit(LIST_LIMIT);
   const ids = idsFor[view];
@@ -109,19 +114,30 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
   const stageOf = new Map((stageRows ?? []).map((r) => [r.id, r.stage]));
   const count = (v: View) => (idsFor[v] ?? []).filter((id) => inScope(stageOf.get(id) ?? null)).length;
 
+  const tz = sla.timeZone || "UTC";
+  const stamp = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   const rows = (list ?? []).map((c) => {
     const open = byClient.get(c.id) ?? [];
     const waitingOn = open.filter((x) => x.status === "Open");
     const oldest = waitingOn.sort((a, b) => a.receivedAt.localeCompare(b.receivedAt))[0];
     const state = oldest ? slaState(oldest, sla, now) : null;
+    const source = (c.last_in_source ?? "").startsWith("portal:") ? `logged by ${(c.last_in_source ?? "").slice(7)}` : "via GoHighLevel";
     return {
       ...c,
+      oldestWaiting: oldest?.receivedAt ?? "",
+      receivedLabel: c.last_in_at ? stamp.format(new Date(c.last_in_at)) : "",
+      sourceLabel: c.last_in_at ? source : "",
+      repliedSince: Boolean(c.last_in_at && c.last_direction === "outbound" && c.last_message_at && c.last_message_at > c.last_in_at),
       escalated: open.some(awaitingPickup),
       overdue: open.some((x) => needsEscalation(x, sla, now)) || state?.stage === "breach",
       dueSoon: state?.stage === "reminder",
       waitedLabel: state ? formatMinutes(state.waitedMinutes) : "",
     };
   });
+
+  if (sort === "waiting") {
+    rows.sort((a, b) => (a.oldestWaiting || "9999").localeCompare(b.oldestWaiting || "9999"));
+  }
 
   const showList = !selected; // On phones, list and conversation take turns.
 
@@ -144,7 +160,16 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
             </Link>
           ))}
         </nav>
+        <nav className="flex gap-0.5 rounded-lg border border-zinc-200 bg-white p-0.5 text-xs" aria-label="Sort">
+          <Link href={params({ sort: "", c: selected })} aria-current={sort === "newest" ? "true" : undefined} className={`rounded-md px-2 py-1 ${sort === "newest" ? "bg-zinc-100 font-semibold text-zinc-900" : "text-zinc-500"}`}>
+            Newest first
+          </Link>
+          <Link href={params({ sort: "waiting", c: selected })} aria-current={sort === "waiting" ? "true" : undefined} className={`rounded-md px-2 py-1 ${sort === "waiting" ? "bg-zinc-100 font-semibold text-zinc-900" : "text-zinc-500"}`}>
+            Longest waiting
+          </Link>
+        </nav>
         <form className="flex flex-wrap items-center gap-2" action="/dashboard/inbox">
+          {sort === "waiting" && <input type="hidden" name="sort" value="waiting" />}
           <input type="hidden" name="view" value={view} />
           <select name="dept" defaultValue={dept} aria-label="Department" className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-sm">
             <option value="all">All departments</option>
@@ -196,15 +221,19 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
                       <span className="min-w-0 flex-1">
                         <span className="flex items-baseline gap-2">
                           <span className={`min-w-0 flex-1 truncate text-sm ${c.waiting ? "font-semibold text-zinc-900" : "text-zinc-800"}`}>{c.name}</span>
-                          <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">{shortAgo(c.last_message_at, now)}</span>
+                          <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">{shortAgo(c.last_in_at ?? c.last_message_at, now)}</span>
                         </span>
-                        <span className="mt-0.5 flex items-center gap-1.5 text-xs text-zinc-500">
-                          {c.last_channel && <ChannelTag channel={c.last_channel} />}
-                          <span className="truncate">
-                            {c.last_direction === "outbound" && <span className="text-zinc-400">You: </span>}
-                            {c.last_body || "No messages yet"}
+                        <span className="mt-0.5 block truncate text-xs text-zinc-700">
+                          {c.last_in_body || (c.last_in_attachments ? "📎 Photo or file" : c.last_in_at ? "(no text)" : c.last_body || "No messages yet")}
+                        </span>
+                        {c.last_in_at && (
+                          <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-zinc-500">
+                            {c.last_in_channel && <ChannelTag channel={c.last_in_channel} />}
+                            <span className="tabular-nums">{c.receivedLabel}</span>
+                            <span className="text-zinc-400">· {c.sourceLabel}</span>
+                            {c.repliedSince && <span className="font-semibold text-[#3F7A5C]">· ✓ Replied</span>}
                           </span>
-                        </span>
+                        )}
                         <span className="mt-1 flex flex-wrap items-center gap-1">
                           {c.waiting > 0 && (
                             <span

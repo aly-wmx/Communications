@@ -33,9 +33,16 @@ describe("helpers", () => {
       42,
     ]);
     expect(a).toEqual([
-      { url: "https://storage.googleapis.com/msgsndr/x/photo.JPG", isImage: true, name: "photo.JPG" },
-      { url: "https://storage.googleapis.com/msgsndr/x/plan.pdf", isImage: false, name: "plan.pdf" },
+      { url: "https://storage.googleapis.com/msgsndr/x/photo.JPG", isImage: true, kind: "image", name: "photo.JPG" },
+      { url: "https://storage.googleapis.com/msgsndr/x/plan.pdf", isImage: false, kind: "file", name: "plan.pdf" },
     ]);
+    const kinds = parseAttachments([
+      "https://go.watermarkdesignbuild.com/a/clip.mp4",
+      "https://go.watermarkdesignbuild.com/a/voice.3gpp",
+      "https://go.watermarkdesignbuild.com/a/note.m4a",
+      "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1",
+    ]).map((x) => x.kind);
+    expect(kinds).toEqual(["video", "video", "audio", "unknown"]);
     expect(parseAttachments(null)).toEqual([]);
   });
 

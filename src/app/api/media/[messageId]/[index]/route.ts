@@ -32,12 +32,16 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/media/[mess
   }
 
   const type = upstream.headers.get("content-type") ?? "application/octet-stream";
-  const isImage = /^image\/(png|jpe?g|gif|webp|heic|heif|bmp)$/i.test(type.split(";")[0].trim());
+  const base = type.split(";")[0].trim().toLowerCase();
+  // Photos, videos and voice clips display in the chat; anything else downloads.
+  const isImage = /^image\/(png|jpe?g|gif|webp|heic|heif|bmp)$/.test(base);
+  const isPlayable = /^(video\/(mp4|quicktime|webm|3gpp|3gpp2)|audio\/(mpeg|mp4|x-m4a|aac|ogg|wav|x-wav|amr|3gpp))$/.test(base);
+  const inline = isImage || isPlayable;
   const name = decodeURIComponent(new URL(url).pathname.split("/").pop() || "attachment").replace(/[^\w.\- ]/g, "_");
   const headers = new Headers({
-    // Anything that isn't a plain image is downloaded, never rendered (no HTML/SVG from outside).
-    "Content-Type": isImage ? type : "application/octet-stream",
-    "Content-Disposition": `${isImage ? "inline" : "attachment"}; filename="${name}"`,
+    // Anything that isn't a plain image, video or audio is downloaded, never rendered (no HTML/SVG from outside).
+    "Content-Type": inline ? base : "application/octet-stream",
+    "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${name}"`,
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "private, max-age=86400",
   });

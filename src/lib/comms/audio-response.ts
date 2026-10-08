@@ -1,6 +1,22 @@
 /** Building audio responses the browser can play and seek. */
 
-const AUDIO_HOSTS = ["storage.googleapis.com", "msgsndr.com", "leadconnectorhq.com", "leadconnector.com"];
+/**
+ * Where GoHighLevel keeps recordings, photos and files. Includes Watermark's
+ * branded GHL address and Facebook/Instagram attachment storage; more can be
+ * added with GHL_MEDIA_HOSTS (comma-separated) without a code change.
+ */
+const AUDIO_HOSTS = [
+  "storage.googleapis.com",
+  "msgsndr.com",
+  "leadconnectorhq.com",
+  "leadconnector.com",
+  "go.watermarkdesignbuild.com",
+  "lookaside.fbsbx.com",
+  ...(process.env.GHL_MEDIA_HOSTS ?? "")
+    .split(",")
+    .map((h) => h.trim().toLowerCase())
+    .filter((h) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(h)),
+];
 
 export function isTrustedAudioUrl(value: string | URL): boolean {
   let url: URL;

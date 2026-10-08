@@ -25,6 +25,7 @@ export function Composer({
 }) {
   const [mode, setMode] = useState<"client" | "note">(canSend && (hasPhone || hasEmail) ? "client" : "note");
   const [channel, setChannel] = useState<"SMS" | "Email">(hasPhone || !hasEmail ? "SMS" : "Email");
+  const [flagFor, setFlagFor] = useState("");
   const [message, setMessage] = useState("");
   const [subject, setSubject] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -41,11 +42,12 @@ export function Composer({
     setError(null);
     startTransition(async () => {
       const result = isNote
-        ? await addTeamNote({ clientId, body: message })
+        ? await addTeamNote({ clientId, body: message, flagFor })
         : await sendReply({ clientId, channel, message, subject: channel === "Email" ? subject : undefined });
       if (result.ok) {
         setMessage("");
         setSubject("");
+        setFlagFor("");
         box.current?.focus();
       } else {
         setError(result.error);
@@ -103,6 +105,26 @@ export function Composer({
               : "Sent through GoHighLevel"}
         </span>
       </div>
+
+      {isNote && (
+        <label className="mb-2 flex items-center gap-2 text-xs text-amber-900">
+          🚩 Needs a reply from
+          <select
+            value={flagFor}
+            onChange={(e) => setFlagFor(e.target.value)}
+            disabled={pending}
+            className={`rounded-md border px-2 py-1 text-xs ${flagFor ? "border-red-300 bg-red-50 font-semibold text-red-800" : "border-amber-300 bg-white"}`}
+          >
+            <option value="">Nobody — just a note</option>
+            {team.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          {flagFor && <span className="text-amber-800">They&apos;ll be notified and the reply is assigned to them.</span>}
+        </label>
+      )}
 
       {!isNote && channel === "Email" && (
         <input

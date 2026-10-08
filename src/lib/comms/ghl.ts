@@ -23,6 +23,8 @@ export interface GhlEvent {
   messageId: string;
   /** ISO time the message happened; falls back to now. */
   at: string;
+  /** For replies sent in GoHighLevel: which GHL user sent it. */
+  ghlUserId?: string;
 }
 
 type Obj = Record<string, unknown>;
@@ -180,6 +182,7 @@ export function eventFromApiMessage(conv: GhlApiConversation, msg: GhlApiMessage
     body: (msg.body ?? "").trim().slice(0, 2000),
     messageId: msg.id,
     at: at && at <= now.getTime() ? new Date(at).toISOString() : now.toISOString(),
+    ghlUserId: msg.userId ?? "",
   };
 }
 
@@ -199,6 +202,8 @@ export interface MessageRecord {
   durationSeconds: number | null;
   /** Attachment URLs (photos, files). */
   attachments: string[];
+  /** The GoHighLevel user who sent it ('' for clients and automations). */
+  ghlUserId: string;
 }
 
 /** Thread entry for any real conversation message, or null for system notes. Calls get a readable line. */
@@ -229,6 +234,7 @@ export function messageRecordFromApi(conv: GhlApiConversation, msg: GhlApiMessag
     .filter((u: string) => /^https:\/\//.test(u))
     .slice(0, 20);
   return {
+    ghlUserId: (msg.userId ?? "").slice(0, 60),
     callStatus: isCall ? callStatus.slice(0, 30) : "",
     durationSeconds: isCall && Number.isFinite(duration) && duration > 0 ? Math.round(duration) : null,
     attachments,

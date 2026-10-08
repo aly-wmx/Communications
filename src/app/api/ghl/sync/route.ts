@@ -1,5 +1,5 @@
 import { eventFromApiMessage, messageRecordFromApi, toMillis, type MessageRecord } from "@/lib/comms/ghl";
-import { conversationMessages, fetchEmailText, ghlConfig, GhlError, searchConversations } from "@/lib/comms/ghl-api";
+import { conversationMessages, fetchEmailContent, ghlConfig, GhlError, listGhlUsers, searchConversations } from "@/lib/comms/ghl-api";
 import { htmlToText } from "@/lib/comms/outbound";
 import { teamGhlContactIds } from "@/lib/comms/notify-store";
 import { businessIdFor, cronSecretOk, ensureClient, recordGhlEvent, serviceDb, storeMessages, type Db } from "@/lib/comms/ghl-store";
@@ -27,13 +27,16 @@ const MAX_CONVERSATIONS = 50;
 /** Older emails copied without their text get filled in a few at a time. */
 const EMAIL_REPAIRS_PER_RUN = 5;
 
-/** Best effort: an email we can't open still shows in the thread, just without text. */
-async function emailText(token: string, messageId: string): Promise<string> {
+/** Marks an email whose text and pictures have been fetched, so it isn't fetched again. */
+const EMAIL_CHECKED = "email-v2";
+
+/** Best effort: an email we can't open still shows in the thread, just without text or pictures. */
+async function emailContent(token: string, messageId: string): Promise<{ text: string; attachments: string[] } | null> {
   try {
-    return await fetchEmailText(token, messageId, htmlToText);
+    return await fetchEmailContent(token, messageId, htmlToText);
   } catch (err) {
-    console.warn("couldn't fetch email body", messageId, err instanceof Error ? err.message : err);
-    return "";
+    console.warn("couldn't fetch email content", messageId, err instanceof Error ? err.message : err);
+    return null;
   }
 }
 
@@ -98,6 +101,22 @@ async function run(req: Request): Promise<Response> {
       });
     }
 
+    // GHL user names (for "who replied" labels), refreshed at most hourly; a missing scope never stops the sync.
+    const { data: usersState } = await sb.from("integration_state").select("value").eq("key", "ghl_users").maybeSingle();
+    const usersAt = (usersState?.value as { refreshedAt?: string } | null)?.refreshedAt;
+    if (!usersAt || startedAt.getTime() - new Date(usersAt).getTime() > 60 * 60_000) {
+      try {
+        const users = await listGhlUsers(token, locationId);
+        if (users.length) await sb.from("ghl_users").upsert(users.map((u) => ({ ...u, updated_at: startedAt.toISOString() })));
+        await sb.from("integration_state").upsert({ key: "ghl_users", value: { refreshedAt: startedAt.toISOString(), count: users.length } as unknown as Json });
+      } catch (err) {
+        await sb.from("integration_state").upsert({
+          key: "ghl_users",
+          value: { refreshedAt: startedAt.toISOString(), error: err instanceof Error ? err.message : "failed" } as unknown as Json,
+        });
+      }
+    }
+
     const businessId = await businessIdFor(sb, params.get("business"));
     const teamContacts = await teamGhlContactIds(sb);
     for (const conv of changed) {
@@ -110,7 +129,13 @@ async function run(req: Request): Promise<Response> {
       // The full thread first, so the conversation view is complete even for messages the queue ignores.
       const records = msgs.map((m) => messageRecordFromApi(conv, m, startedAt)).filter((r): r is MessageRecord => r !== null);
       for (const r of records) {
-        if (r.channel === "Email" && !r.body) r.body = await emailText(token, r.id);
+        if (r.channel !== "Email") continue;
+        const content = await emailContent(token, r.id);
+        if (content) {
+          r.body = r.body || content.text;
+          r.attachments = [...new Set([...r.attachments, ...content.attachments])];
+          r.status = EMAIL_CHECKED;
+        }
       }
       if (records.length && (conv.contactId || conv.phone || conv.email)) {
         const client = await ensureClient(
@@ -138,19 +163,27 @@ async function run(req: Request): Promise<Response> {
       }
     }
 
-    // Fill in emails copied earlier without their text.
-    const { data: blankEmails } = await sb
+    // Fill in text and pictures for emails copied before this was possible, a few per run.
+    const { data: unchecked } = await sb
       .from("messages")
-      .select("id")
+      .select("id, body, attachments")
       .eq("channel", "Email")
-      .eq("body", "")
-      .neq("status", "no-body")
+      .neq("status", EMAIL_CHECKED)
+      .not("id", "like", "portal_%")
       .order("occurred_at", { ascending: false })
       .limit(EMAIL_REPAIRS_PER_RUN);
-    for (const m of blankEmails ?? []) {
-      const text = await emailText(token, m.id);
-      await sb.from("messages").update(text ? { body: text } : { status: "no-body" }).eq("id", m.id);
-      if (text) counts.emailsFilled++;
+    for (const m of unchecked ?? []) {
+      const content = await emailContent(token, m.id);
+      const existing = Array.isArray(m.attachments) ? (m.attachments as string[]) : [];
+      await sb
+        .from("messages")
+        .update(
+          content
+            ? { body: m.body || content.text, attachments: [...new Set([...existing, ...content.attachments])], status: EMAIL_CHECKED }
+            : { status: EMAIL_CHECKED },
+        )
+        .eq("id", m.id);
+      if (content && (content.text || content.attachments.length)) counts.emailsFilled++;
     }
 
     await saveState(sb, {

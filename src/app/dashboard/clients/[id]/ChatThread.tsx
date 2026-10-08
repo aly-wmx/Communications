@@ -14,7 +14,14 @@ export interface ChatMessage {
   attachments: Attachment[];
   /** Set for team-only notes (who wrote it). */
   noteAuthor?: string;
+  /** "Aly · via Portal", "Reid · via GoHighLevel", "Automated · GHL workflow", "via GoHighLevel"… */
+  sender?: string;
+  /** For team notes: who's been asked to reply to the client. */
+  flaggedFor?: string;
 }
+
+const fullDate = (iso: string) =>
+  new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
 const CALL_CHANNELS = new Set(["Call", "Missed call", "Voicemail"]);
 /** Messages from the same side within this gap share one bubble group. */
@@ -42,30 +49,44 @@ function initials(name: string) {
   return ((parts[0]?.[0] ?? "?") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }
 
-/** Photos as thumbnails (tap to open full size), other files as download chips. */
+/** One attachment: photo thumbnail, inline video/audio player, or a download chip. */
+function AttachmentItem({ src, a, light }: { src: string; a: Attachment; light: boolean }) {
+  // Links without a file type (e.g. Facebook) are tried as a photo first, then offered as a link.
+  const [failed, setFailed] = useState(false);
+  const chip = (
+    <a
+      href={src}
+      target="_blank"
+      rel="noreferrer"
+      className={`inline-flex max-w-full items-center gap-1 truncate rounded-md px-2 py-1 text-xs underline-offset-2 hover:underline ${
+        light ? "bg-white/15 text-white" : "bg-zinc-100 text-zinc-700"
+      }`}
+    >
+      📎 {a.kind === "unknown" ? "Open attachment" : a.name}
+    </a>
+  );
+  if (failed || a.kind === "file") return chip;
+  if (a.kind === "video") {
+    return <video src={src} controls preload="metadata" playsInline className="max-h-72 max-w-full rounded-lg bg-black" onError={() => setFailed(true)} />;
+  }
+  if (a.kind === "audio") {
+    return <audio src={src} controls preload="none" className="h-9 w-64 max-w-full" onError={() => setFailed(true)} />;
+  }
+  return (
+    <a href={src} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg">
+      {/* eslint-disable-next-line @next/next/no-img-element -- streamed through the portal, not a static asset */}
+      <img src={src} alt={a.name} loading="lazy" onError={() => setFailed(true)} className="max-h-60 max-w-full rounded-lg object-cover" />
+    </a>
+  );
+}
+
 function Attachments({ messageId, items, light }: { messageId: string; items: Attachment[]; light: boolean }) {
   if (!items.length) return null;
-  const src = (i: number) => `/api/media/${encodeURIComponent(messageId)}/${i}`;
   return (
     <div className="mt-1.5 flex flex-wrap gap-1.5">
-      {items.map((a, i) =>
-        a.isImage ? (
-          <a key={i} href={src(i)} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg">
-            {/* eslint-disable-next-line @next/next/no-img-element -- streamed through the portal, not a static asset */}
-            <img src={src(i)} alt={a.name} loading="lazy" className="max-h-60 max-w-full rounded-lg object-cover" />
-          </a>
-        ) : (
-          <a
-            key={i}
-            href={src(i)}
-            className={`inline-flex max-w-full items-center gap-1 truncate rounded-md px-2 py-1 text-xs underline-offset-2 hover:underline ${
-              light ? "bg-white/15 text-white" : "bg-zinc-100 text-zinc-700"
-            }`}
-          >
-            📎 {a.name}
-          </a>
-        ),
-      )}
+      {items.map((a, i) => (
+        <AttachmentItem key={i} src={`/api/media/${encodeURIComponent(messageId)}/${i}`} a={a} light={light} />
+      ))}
     </div>
   );
 }
@@ -151,6 +172,7 @@ export function ChatThread({
                 !m.noteAuthor &&
                 !CALL_CHANNELS.has(a.channel) &&
                 a.direction === m.direction &&
+                a.sender === m.sender &&
                 dayLabel(a.occurredAt) === dayLabel(m.occurredAt) &&
                 Math.abs(new Date(a.occurredAt).getTime() - new Date(m.occurredAt).getTime()) < GROUP_GAP_MS;
               const first = !sameSide(prev);
@@ -170,9 +192,14 @@ export function ChatThread({
                   {m.noteAuthor ? (
                     <div className="flex justify-center py-1.5">
                       <div className="w-full max-w-[85%] rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-[14px] shadow-sm">
-                        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800" title={fullDate(m.occurredAt)}>
                           🔒 Team note · {m.noteAuthor} · {time(m.occurredAt)}
                         </p>
+                        {m.flaggedFor && (
+                          <p className="mb-1 inline-block rounded bg-red-100 px-1.5 py-0.5 text-[11px] font-semibold text-red-800">
+                            🚩 Flagged for {m.flaggedFor} to reply
+                          </p>
+                        )}
                         <p className="whitespace-pre-wrap break-words text-zinc-900">
                           {m.body.split(/(@[A-Z][\w]*(?: [A-Z][\w]*)?)/g).map((part, k) =>
                             part.startsWith("@") ? (
@@ -250,8 +277,11 @@ export function ChatThread({
                           <Attachments messageId={m.id} items={m.attachments} light={out && !automated} />
                         </div>
                         {last && (
-                          <p className="mt-1 px-1 text-[10px] text-zinc-400">
-                            {automated && <span className="font-semibold text-zinc-500">Automated · </span>}
+                          <p className="mt-1 px-1 text-[10px] text-zinc-400" title={fullDate(m.occurredAt)}>
+                            {m.sender && (
+                              <span className={`font-semibold ${out && !automated ? "text-[#1C2B47]" : "text-zinc-500"}`}>{m.sender} · </span>
+                            )}
+                            {!m.sender && automated && <span className="font-semibold text-zinc-500">Automated · </span>}
                             {time(m.occurredAt)}
                           </p>
                         )}

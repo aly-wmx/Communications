@@ -180,6 +180,12 @@ export type Database = {
           },
         ];
       };
+      ghl_users: {
+        Row: { email: string; id: string; name: string; updated_at: string };
+        Insert: { email?: string; id: string; name?: string; updated_at?: string };
+        Update: { email?: string; id?: string; name?: string; updated_at?: string };
+        Relationships: [];
+      };
       ghl_messages: {
         Row: { contact_id: string | null; direction: string; id: string; processed_at: string };
         Insert: { contact_id?: string | null; direction: string; id: string; processed_at?: string };
@@ -211,6 +217,7 @@ export type Database = {
           created_at: string;
           direction: string;
           duration_seconds: number | null;
+          ghl_user_id: string;
           id: string;
           occurred_at: string;
           sent_by_user: boolean;
@@ -227,6 +234,7 @@ export type Database = {
           created_at?: string;
           direction: string;
           duration_seconds?: number | null;
+          ghl_user_id?: string;
           id: string;
           occurred_at: string;
           sent_by_user?: boolean;
@@ -243,6 +251,7 @@ export type Database = {
           created_at?: string;
           direction?: string;
           duration_seconds?: number | null;
+          ghl_user_id?: string;
           id?: string;
           occurred_at?: string;
           sent_by_user?: boolean;
@@ -326,9 +335,9 @@ export type Database = {
         Relationships: [];
       };
       team_notes: {
-        Row: { author_id: string | null; body: string; client_id: string | null; created_at: string; id: string; mentions: string[] };
-        Insert: { author_id?: string | null; body: string; client_id?: string | null; created_at?: string; id?: string; mentions?: string[] };
-        Update: { author_id?: string | null; body?: string; client_id?: string | null; created_at?: string; id?: string; mentions?: string[] };
+        Row: { author_id: string | null; body: string; client_id: string | null; created_at: string; flagged_for: string | null; id: string; mentions: string[] };
+        Insert: { author_id?: string | null; body: string; client_id?: string | null; created_at?: string; flagged_for?: string | null; id?: string; mentions?: string[] };
+        Update: { author_id?: string | null; body?: string; client_id?: string | null; created_at?: string; flagged_for?: string | null; id?: string; mentions?: string[] };
         Relationships: [];
       };
       team_members: {
@@ -389,6 +398,11 @@ export type Database = {
           project: string;
           stage: string | null;
           waiting: number;
+          last_in_at: string | null;
+          last_in_channel: string | null;
+          last_in_body: string | null;
+          last_in_source: string | null;
+          last_in_attachments: number | null;
         };
         Relationships: [];
       };

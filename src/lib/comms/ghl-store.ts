@@ -155,6 +155,7 @@ export async function storeMessages(sb: Db, clientId: string, records: MessageRe
         call_status: r.callStatus,
         duration_seconds: r.durationSeconds,
         attachments: r.attachments,
+        ghl_user_id: r.ghlUserId,
       })),
       { onConflict: "id", ignoreDuplicates: true },
     )
@@ -164,10 +165,14 @@ export async function storeMessages(sb: Db, clientId: string, records: MessageRe
   // Messages copied before call details and photos were kept: fill those in (body is left alone).
   const inserted = new Set((data ?? []).map((d) => d.id));
   for (const r of records) {
-    if (inserted.has(r.id) || (!r.callStatus && !r.attachments.length)) continue;
+    if (inserted.has(r.id) || (!r.callStatus && !r.attachments.length && !r.ghlUserId)) continue;
     await sb
       .from("messages")
-      .update({ call_status: r.callStatus, duration_seconds: r.durationSeconds, attachments: r.attachments })
+      .update({
+        ...(r.callStatus ? { call_status: r.callStatus, duration_seconds: r.durationSeconds } : {}),
+        ...(r.attachments.length ? { attachments: r.attachments } : {}),
+        ...(r.ghlUserId ? { ghl_user_id: r.ghlUserId } : {}),
+      })
       .eq("id", r.id);
   }
   return data?.length ?? 0;
@@ -243,7 +248,17 @@ async function handleInbound(sb: Db, e: GhlEvent, client: ClientRow) {
   return { action: "created" as const, contactId: id };
 }
 
+/** The teammate behind a GHL user (matched by email), so replies sent in GHL are credited to them. */
+async function teammateForGhlUser(sb: Db, ghlUserId: string): Promise<{ id: string; name: string } | null> {
+  if (!ghlUserId) return null;
+  const { data: user } = await sb.from("ghl_users").select("email, name").eq("id", ghlUserId).maybeSingle();
+  if (!user?.email) return null;
+  const { data: members } = await sb.from("team_members").select("id, name, email");
+  return (members ?? []).find((m) => m.email && m.email.toLowerCase() === user.email.toLowerCase()) ?? null;
+}
+
 async function handleOutbound(sb: Db, e: GhlEvent, client: ClientRow) {
+  const teammate = await teammateForGhlUser(sb, e.ghlUserId ?? "");
   // Only contacts that came in before this reply.
   const { data: open } = await sb
     .from("contacts")
@@ -256,8 +271,12 @@ async function handleOutbound(sb: Db, e: GhlEvent, client: ClientRow) {
       .from("contacts")
       .update({
         first_response_at: c.first_response_at ?? e.at,
+        ...(c.first_response_at ? {} : { responded_by_id: teammate?.id ?? "" }),
         status: "Waiting on client",
-        history: [...(c.history ?? []), { at: e.at, byId: "", message: `Replied in GoHighLevel (${e.channel.toLowerCase()})` }] as unknown as Json,
+        history: [
+          ...(c.history ?? []),
+          { at: e.at, byId: teammate?.id ?? "", message: `Replied in GoHighLevel (${e.channel.toLowerCase()})${teammate ? ` by ${teammate.name}` : ""}` },
+        ] as unknown as Json,
         updated_at: new Date().toISOString(),
       })
       .eq("id", c.id);

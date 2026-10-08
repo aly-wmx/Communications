@@ -73,3 +73,14 @@ describe("trusted audio URLs", () => {
     expect(calls).toBe(1);
   });
 });
+
+describe("trusted media hosts", () => {
+  it("allows Watermark's branded GHL address and Facebook attachments, nothing else", async () => {
+    const { isTrustedAudioUrl } = await import("./audio-response");
+    expect(isTrustedAudioUrl("https://go.watermarkdesignbuild.com/conversations-assets/x.jpeg")).toBe(true);
+    expect(isTrustedAudioUrl("https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1")).toBe(true);
+    expect(isTrustedAudioUrl("https://evil.example.com/x.jpeg")).toBe(false);
+    expect(isTrustedAudioUrl("https://go.watermarkdesignbuild.com.evil.com/x.jpeg")).toBe(false);
+    expect(isTrustedAudioUrl("http://go.watermarkdesignbuild.com/x.jpeg")).toBe(false);
+  });
+});

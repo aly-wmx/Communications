@@ -56,13 +56,19 @@ export function formatDuration(seconds: number | null | undefined): string {
 
 // ---------- Attachments ----------
 
+export type AttachmentKind = "image" | "video" | "audio" | "file" | "unknown";
+
 export interface Attachment {
   url: string;
   isImage: boolean;
+  kind: AttachmentKind;
   name: string;
 }
 
 const IMAGE_EXT = /\.(jpe?g|png|gif|webp|heic|heif|bmp)(\?|#|$)/i;
+const VIDEO_EXT = /\.(mp4|m4v|mov|webm|3gpp?|3g2)(\?|#|$)/i;
+const AUDIO_EXT = /\.(mp3|m4a|wav|ogg|oga|amr|aac)(\?|#|$)/i;
+const ANY_EXT = /\.[a-z0-9]{2,5}(\?|#|$)/i;
 
 /** GHL lists attachments as URLs (sometimes objects with a url). */
 export function parseAttachments(raw: unknown): Attachment[] {
@@ -79,7 +85,16 @@ export function parseAttachments(raw: unknown): Attachment[] {
           return url;
         }
       })();
-      return { url, isImage: IMAGE_EXT.test(path), name: path.split("/").pop() || "attachment" };
+      const kind: AttachmentKind = IMAGE_EXT.test(path)
+        ? "image"
+        : VIDEO_EXT.test(path)
+          ? "video"
+          : AUDIO_EXT.test(path)
+            ? "audio"
+            : ANY_EXT.test(path)
+              ? "file"
+              : "unknown"; // e.g. Facebook attachment links, which have no file extension
+      return { url, isImage: kind === "image", kind, name: path.split("/").pop() || "attachment" };
     });
 }
 

@@ -4,6 +4,7 @@ import { canSendMessages } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 import { ChatThread, type ChatMessage } from "./ChatThread";
 import { parseAttachments } from "@/lib/comms/channels";
+import { senderLabel } from "@/lib/comms/sender";
 import { ClientDetails } from "./ClientDetails";
 import { ArchiveControls } from "./ArchiveControls";
 import { Composer } from "./Composer";
@@ -36,7 +37,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
 
   let threadQuery = supabase
     .from("messages")
-    .select("id, direction, channel, body, sent_by_user, occurred_at, conversation_id, attachments")
+    .select("id, direction, channel, body, sent_by_user, occurred_at, conversation_id, attachments, source, ghl_user_id")
     .eq("client_id", id)
     .order("occurred_at", { ascending: false })
     .limit(PAGE_SIZE + 1);
@@ -61,7 +62,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
   if (!client) notFound();
   const { data: notes } = await supabase
     .from("team_notes")
-    .select("id, author_id, body, created_at")
+    .select("id, author_id, body, created_at, flagged_for")
     .eq("client_id", id)
     .order("created_at", { ascending: false })
     .limit(200);
@@ -73,6 +74,11 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
     .limit(5);
 
   const page = newest ?? [];
+  const ghlIds = [...new Set(page.map((m) => m.ghl_user_id).filter(Boolean))];
+  const { data: ghlUsers } = ghlIds.length
+    ? await supabase.from("ghl_users").select("id, name").in("id", ghlIds)
+    : { data: [] as Array<{ id: string; name: string }> };
+  const ghlName = (gid: string) => (ghlUsers ?? []).find((u) => u.id === gid)?.name;
   const hasOlder = page.length > PAGE_SIZE;
   const rows = page.slice(0, PAGE_SIZE).reverse();
   const messages: ChatMessage[] = rows.map((m) => ({
@@ -83,6 +89,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
     sentByUser: m.sent_by_user,
     occurredAt: m.occurred_at,
     attachments: parseAttachments(m.attachments),
+    sender: senderLabel({ direction: m.direction, source: m.source, sentByUser: m.sent_by_user, ghlUserId: m.ghl_user_id }, ghlName),
   }));
   // Team notes sit in the same timeline (within the window of messages shown).
   const windowStart = hasOlder ? rows[0]?.occurred_at : "";
@@ -99,6 +106,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
       occurredAt: n.created_at,
       attachments: [],
       noteAuthor: n.author_id === me?.memberId ? "You" : nameFor(n.author_id),
+      flaggedFor: n.flagged_for ? (n.flagged_for === me?.memberId ? "you" : nameFor(n.flagged_for)) : undefined,
     });
   }
   messages.sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));

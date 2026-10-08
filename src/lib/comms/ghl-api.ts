@@ -202,28 +202,46 @@ export async function updateGhlContact(
 }
 
 /**
- * The text of an email message. GHL lists emails without their body; it lives
- * behind the email endpoint, keyed by the email id(s) in the message's meta.
+ * The text and pictures of an email message. GHL lists emails without their
+ * body; it lives behind the email endpoint, keyed by the email id(s) in the
+ * message's meta. Pictures come from the email's attachments and from images in
+ * the email body (tiny tracking pixels are skipped).
  */
-export async function fetchEmailText(token: string, messageId: string, htmlToText: (h: string) => string): Promise<string> {
+export async function fetchEmailContent(
+  token: string,
+  messageId: string,
+  htmlToText: (h: string) => string,
+): Promise<{ text: string; attachments: string[] }> {
   const detail = (await ghlGet(`/conversations/messages/${encodeURIComponent(messageId)}`, token)) as {
     message?: { meta?: { email?: { messageIds?: string[] } } };
     meta?: { email?: { messageIds?: string[] } };
   };
   const meta = detail.message?.meta ?? detail.meta;
   const emailIds = meta?.email?.messageIds?.length ? meta.email.messageIds : [messageId];
-  for (const id of emailIds.slice(-1)) {
-    const res = (await ghlGet(`/conversations/messages/email/${encodeURIComponent(id)}`, token)) as {
-      emailMessage?: { body?: string; subject?: string };
-      body?: string;
-      subject?: string;
-    };
-    const email = res.emailMessage ?? res;
-    const text = htmlToText(email.body ?? "");
-    const subject = (email.subject ?? "").trim();
-    if (text || subject) return [subject, text].filter(Boolean).join("\n\n").slice(0, 5000);
-  }
-  return "";
+  const res = (await ghlGet(`/conversations/messages/email/${encodeURIComponent(emailIds[emailIds.length - 1])}`, token)) as {
+    emailMessage?: { body?: string; subject?: string; attachments?: unknown[] };
+    body?: string;
+    subject?: string;
+    attachments?: unknown[];
+  };
+  const email = res.emailMessage ?? res;
+  const html = email.body ?? "";
+  const text = htmlToText(html);
+  const subject = (email.subject ?? "").trim();
+
+  const fromAttachments = (Array.isArray(email.attachments) ? email.attachments : [])
+    .map((a) => (typeof a === "string" ? a : (a as { url?: string } | null)?.url ?? ""))
+    .filter((u) => /^https:\/\//.test(u));
+  const inline = [...html.matchAll(/<img\b[^>]*>/gi)]
+    .map((m) => m[0])
+    .filter((tag) => !/\b(width|height)\s*=\s*["']?[01]["'\s>]/i.test(tag)) // tracking pixels
+    .map((tag) => /\bsrc\s*=\s*["']([^"']+)["']/i.exec(tag)?.[1] ?? "")
+    .filter((u) => /^https:\/\//.test(u));
+
+  return {
+    text: [subject, text].filter(Boolean).join("\n\n").slice(0, 5000),
+    attachments: [...new Set([...fromAttachments, ...inline])].slice(0, 20),
+  };
 }
 
 async function contactTags(token: string, contactId: string, tags: string[], method: "POST" | "DELETE"): Promise<void> {
@@ -248,3 +266,22 @@ async function contactTags(token: string, contactId: string, tags: string[], met
 
 export const addGhlTags = (token: string, contactId: string, tags: string[]) => contactTags(token, contactId, tags, "POST");
 export const removeGhlTags = (token: string, contactId: string, tags: string[]) => contactTags(token, contactId, tags, "DELETE");
+
+/** The location's GoHighLevel users (for "Reid · via GoHighLevel" labels). Needs the users.readonly scope. */
+export async function listGhlUsers(token: string, locationId: string): Promise<Array<{ id: string; name: string; email: string }>> {
+  const res = await fetch(`${GHL}/users/?locationId=${encodeURIComponent(locationId)}`, {
+    headers: { Authorization: `Bearer ${token}`, Version: "2021-07-28", Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new GhlError(res.status, res.status === 401 || res.status === 403 ? "Add the users.readonly scope to show who sent replies from GoHighLevel." : `GHL users: ${res.status}`);
+  }
+  const body = (await res.json()) as { users?: Array<{ id?: string; name?: string; firstName?: string; lastName?: string; email?: string }> };
+  return (body.users ?? [])
+    .filter((u) => u.id)
+    .map((u) => ({
+      id: u.id!,
+      name: (u.name || [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email || "GHL user").trim(),
+      email: (u.email ?? "").trim().toLowerCase(),
+    }));
+}
