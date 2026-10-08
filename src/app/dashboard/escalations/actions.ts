@@ -148,7 +148,7 @@ export async function sendTestNotification(): Promise<ActionResult> {
         urgent: false,
       },
     ],
-    {},
+    { alwaysSend: true },
   );
   await deliverNow();
   revalidatePath("/dashboard/notifications");

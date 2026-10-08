@@ -85,6 +85,9 @@ async function autoJoin(user: {
         title: `${name} joined the portal`,
         body: `Signed in with Google as ${email} (allowed domain) and was added as a Coordinator. Change their role or remove them on the Team page.`,
         link: "/dashboard/team",
+        // Portal only: not sent by email or Slack.
+        slack_status: "skipped" as const,
+        email_status: "skipped" as const,
       })),
     );
   }

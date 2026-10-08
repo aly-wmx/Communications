@@ -2,7 +2,7 @@ import "server-only";
 import { escalate, reminderDue } from "./contacts";
 import { ghlConfig, sendGhlMessage, upsertGhlContact } from "./ghl-api";
 import type { Db } from "./ghl-store";
-import { planEscalation, planReminder, type PlanContext, type PlanMember, type PlannedNotification } from "./notify-plan";
+import { planEscalation, planReminder, sentOutsidePortal, type PlanContext, type PlanMember, type PlannedNotification } from "./notify-plan";
 import { textToHtml } from "./outbound";
 import { contactFromRow, contactPatch, slaFromJson } from "./rows";
 import { needsEscalation, slaState } from "./sla";
@@ -57,7 +57,7 @@ export function planContext(c: ClientContact, clientName: string, sla: SlaSettin
 export async function saveNotifications(
   sb: Db,
   planned: PlannedNotification[],
-  about: { contactId?: string; clientId?: string; link?: string },
+  about: { contactId?: string; clientId?: string; link?: string; /** Send by email/Slack whatever the kind (test messages). */ alwaysSend?: boolean },
 ): Promise<number> {
   if (!planned.length) return 0;
   const link = about.link ?? (about.clientId ? `/dashboard/inbox?view=all&dept=all&c=${about.clientId}` : "/dashboard/inbox");
@@ -71,6 +71,8 @@ export async function saveNotifications(
       link,
       contact_id: about.contactId ?? null,
       client_id: about.clientId ?? null,
+      // Portal-only kinds are never picked up by the email/Slack sender.
+      ...(about.alwaysSend || sentOutsidePortal(p.kind) ? {} : { slack_status: "skipped" as const, email_status: "skipped" as const }),
     })),
   );
   if (error) throw error;

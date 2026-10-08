@@ -4,6 +4,13 @@ import { formatMinutes } from "./sla";
 
 export type NotificationKind = "escalation" | "reminder" | "new_message" | "picked_up" | "mention";
 
+/**
+ * Only these go out by email and Slack DM. Everything else shows in the portal
+ * (bell and popups) only — the team asked for fewer emails.
+ */
+export const SENT_OUTSIDE_PORTAL: readonly NotificationKind[] = ["escalation"];
+export const sentOutsidePortal = (kind: string) => (SENT_OUTSIDE_PORTAL as readonly string[]).includes(kind);
+
 export interface PlanMember {
   id: string;
   name: string;

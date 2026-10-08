@@ -22,7 +22,7 @@ export default async function NotificationsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Notifications" description="Choose how the portal reaches you about escalations, reminders and new client messages." />
+      <PageHeader title="Notifications" description="Choose how the portal reaches you about escalations. Everything else shows in the bell and pop-ups." />
       <PrefsForm
         initial={{
           slack: prefRow?.slack ?? true,

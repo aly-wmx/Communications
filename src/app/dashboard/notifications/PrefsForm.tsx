@@ -50,19 +50,14 @@ export function PrefsForm({ initial, canSlack, canEmail }: { initial: Prefs; can
     <section className="max-w-2xl space-y-4 rounded-lg border border-zinc-200 bg-white p-5">
       <div>
         <h2 className="text-sm font-semibold text-zinc-900">How to reach you</h2>
-        <p className="text-xs text-zinc-500">The 🔔 bell always shows everything. These control what else goes out.</p>
+        <p className="text-xs text-zinc-500">
+          The 🔔 bell and pop-ups show everything. Only <strong className="font-semibold text-zinc-700">escalations</strong> also go out by
+          Slack and email — new messages, reminders, pick-ups and mentions stay in the portal.
+        </p>
       </div>
       <div className="divide-y divide-zinc-100">
-        {row("slack", "Slack direct messages", "Escalations, pick-ups and mentions — plus the alerts you choose below.", canSlack)}
-        {row("email", "Email (sent through GoHighLevel)", "Same as Slack, to your sign-in email.", canEmail)}
-      </div>
-      <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Also send me</h3>
-        <div className="divide-y divide-zinc-100">
-          {row("new_messages", "New client messages assigned to me", "A heads-up when a client texts, emails or calls and it's yours.")}
-          {row("reminders", "Reminders", "When a client assigned to me is about to go overdue.")}
-        </div>
-        <p className="mt-1 text-xs text-zinc-500">Escalations, pick-ups and @mentions always go out on the channels above.</p>
+        {row("slack", "Slack direct messages", "Escalations sent to you.", canSlack)}
+        {row("email", "Email (sent through GoHighLevel)", "Escalations sent to you, at your sign-in email.", canEmail)}
       </div>
       {message && (
         <p role={message.ok ? "status" : "alert"} className={`text-sm ${message.ok ? "text-[#3F7A5C]" : "text-red-600"}`}>
