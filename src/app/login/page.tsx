@@ -77,6 +77,18 @@ function LoginForm() {
       <Button type="submit" disabled={pending} className="w-full">
         {pending ? "Signing in…" : "Sign in"}
       </Button>
+
+      <p className="text-center text-xs text-zinc-500">
+        By signing in you agree to the{" "}
+        <Link href="/terms" className="underline underline-offset-2 hover:text-zinc-900">
+          Terms of Service
+        </Link>{" "}
+        and{" "}
+        <Link href="/privacy" className="underline underline-offset-2 hover:text-zinc-900">
+          Privacy Policy
+        </Link>
+        .
+      </p>
     </form>
   );
 }
