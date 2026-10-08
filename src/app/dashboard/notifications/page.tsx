@@ -9,7 +9,7 @@ export default async function NotificationsPage() {
   const me = await getSessionMember();
   if (!me) return null;
   const supabase = await createClient();
-  const [{ data: prefRow }, { data: member }, { data: recent }] = await Promise.all([
+  const [{ data: prefRow }, { data: member }, { data: recent }, { data: rules }] = await Promise.all([
     supabase.from("notification_prefs").select("*").eq("member_id", me.memberId).maybeSingle(),
     supabase.from("team_members").select("email, slack_user_id").eq("id", me.memberId).maybeSingle(),
     supabase
@@ -17,12 +17,13 @@ export default async function NotificationsPage() {
       .select("id, title, kind, created_at, slack_status, email_status, delivery_error")
       .order("created_at", { ascending: false })
       .limit(15),
+    supabase.from("settings").select("email_kinds, dm_kinds").eq("id", 1).maybeSingle(),
   ]);
   const slackReady = Boolean(process.env.SLACK_BOT_TOKEN);
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Notifications" description="Choose how the portal reaches you about escalations. Everything else shows in the bell and pop-ups." />
+      <PageHeader title="Notifications" description="Choose how the portal reaches you outside the portal. Everything always shows in the bell and pop-ups." />
       <PrefsForm
         initial={{
           slack: prefRow?.slack ?? true,
@@ -38,6 +39,7 @@ export default async function NotificationsPage() {
               : ""
         }
         canEmail={!member?.email ? "No email on your team record." : ""}
+        rules={{ email: rules?.email_kinds ?? ["escalation"], dm: rules?.dm_kinds ?? ["escalation"] }}
       />
 
       <section className="max-w-2xl rounded-lg border border-zinc-200 bg-white p-5">

@@ -332,9 +332,9 @@ export type Database = {
         Relationships: [];
       };
       settings: {
-        Row: { allowed_domains: string[]; blocked_emails: string[]; id: number; sla: Json; slack_channel_events: string[]; slack_channel_id: string; updated_at: string };
-        Insert: { allowed_domains?: string[]; blocked_emails?: string[]; id?: number; sla: Json; slack_channel_events?: string[]; slack_channel_id?: string; updated_at?: string };
-        Update: { allowed_domains?: string[]; blocked_emails?: string[]; id?: number; sla?: Json; slack_channel_events?: string[]; slack_channel_id?: string; updated_at?: string };
+        Row: { allowed_domains: string[]; blocked_emails: string[]; dm_kinds: string[]; email_kinds: string[]; id: number; sla: Json; slack_channel_events: string[]; slack_channel_id: string; updated_at: string };
+        Insert: { allowed_domains?: string[]; blocked_emails?: string[]; dm_kinds?: string[]; email_kinds?: string[]; id?: number; sla: Json; slack_channel_events?: string[]; slack_channel_id?: string; updated_at?: string };
+        Update: { allowed_domains?: string[]; blocked_emails?: string[]; dm_kinds?: string[]; email_kinds?: string[]; id?: number; sla?: Json; slack_channel_events?: string[]; slack_channel_id?: string; updated_at?: string };
         Relationships: [];
       };
       slack_channel_posts: {

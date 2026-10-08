@@ -10,6 +10,7 @@ import { slaSettingsSchema } from "@/lib/validation/settings";
 import { normaliseDomain } from "@/lib/signin-domains";
 import { serviceDb } from "@/lib/comms/ghl-store";
 import { dispatchPending } from "@/lib/comms/notify-store";
+import { isNotificationKind } from "@/lib/comms/notify-plan";
 
 export async function saveSla(input: unknown): Promise<ActionResult> {
   const denied = await requireAdmin();
@@ -59,18 +60,16 @@ export async function saveSignInAccess(input: unknown): Promise<ActionResult> {
   return { ok: true };
 }
 
-const EVENTS = ["escalation", "picked_up", "mention", "reminder", "new_message"];
 
 /** Team Slack channel for escalations, pick-ups and mentions, and which events go there. */
 export async function saveSlackChannel(input: unknown): Promise<ActionResult> {
   const denied = await requireAdmin();
   if (denied) return denied;
-  const v = input as { channelId?: unknown; events?: unknown };
+  const v = input as { channelId?: unknown };
   const channelId = typeof v?.channelId === "string" ? v.channelId.trim().toUpperCase() : "";
   if (channelId && !/^[CG][A-Z0-9]{8,}$/.test(channelId)) return { ok: false, error: "Slack channel IDs look like C0C7KR2UH9U (channel details → bottom of the About tab)." };
-  const events = Array.isArray(v?.events) ? v.events.filter((e): e is string => typeof e === "string" && EVENTS.includes(e)) : [];
   const supabase = await createClient();
-  const { error } = await supabase.from("settings").update({ slack_channel_id: channelId, slack_channel_events: [...new Set(events)] }).eq("id", 1);
+  const { error } = await supabase.from("settings").update({ slack_channel_id: channelId }).eq("id", 1);
   if (error) return { ok: false, error: "Couldn't save the Slack channel." };
   revalidatePath("/dashboard/settings");
   return { ok: true };
@@ -94,4 +93,21 @@ export async function testSlackChannel(): Promise<ActionResult> {
   const { data: result } = await sb.from("slack_channel_posts").select("status, error").eq("id", post.id).single();
   if (result?.status === "sent") return { ok: true };
   return { ok: false, error: result?.error || "Slack didn't accept the message." };
+}
+
+/** Settings → Notifications: which kinds go out by email, Slack DM and the team channel. */
+export async function saveNotificationRules(input: unknown): Promise<ActionResult> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+  const v = (input ?? {}) as { email?: unknown; dm?: unknown; channel?: unknown };
+  const kinds = (x: unknown) => (Array.isArray(x) ? [...new Set(x.filter(isNotificationKind))] : []);
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("settings")
+    .update({ email_kinds: kinds(v.email), dm_kinds: kinds(v.dm), slack_channel_events: kinds(v.channel) })
+    .eq("id", 1);
+  if (error) return { ok: false, error: "Couldn't save the notification settings." };
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/notifications");
+  return { ok: true };
 }

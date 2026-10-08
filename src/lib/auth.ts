@@ -63,7 +63,11 @@ async function autoJoin(user: {
 
   // Not a team member yet, so RLS hides settings from them: read with the server's access.
   const admin = createServiceRoleClient();
-  const { data: settings } = await admin.from("settings").select("allowed_domains, blocked_emails").eq("id", 1).maybeSingle();
+  const { data: settings } = await admin
+    .from("settings")
+    .select("allowed_domains, blocked_emails, email_kinds, dm_kinds")
+    .eq("id", 1)
+    .maybeSingle();
   if (!emailDomainAllowed(email, settings?.allowed_domains ?? [])) return null;
   if ((settings?.blocked_emails ?? []).some((b) => b.toLowerCase() === email)) return null;
 
@@ -85,9 +89,9 @@ async function autoJoin(user: {
         title: `${name} joined the portal`,
         body: `Signed in with Google as ${email} (allowed domain) and was added as a Coordinator. Change their role or remove them on the Team page.`,
         link: "/dashboard/team",
-        // Portal only: not sent by email or Slack.
-        slack_status: "skipped" as const,
-        email_status: "skipped" as const,
+        // Sent by email/Slack only if Settings → Notifications says so for mentions.
+        ...(settings?.dm_kinds.includes("mention") ? {} : { slack_status: "skipped" as const }),
+        ...(settings?.email_kinds.includes("mention") ? {} : { email_status: "skipped" as const }),
       })),
     );
   }

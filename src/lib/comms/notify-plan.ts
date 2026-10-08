@@ -4,12 +4,22 @@ import { formatMinutes } from "./sla";
 
 export type NotificationKind = "escalation" | "reminder" | "new_message" | "picked_up" | "mention";
 
+export const NOTIFICATION_KINDS: readonly NotificationKind[] = ["escalation", "picked_up", "mention", "reminder", "new_message"];
+
+export const isNotificationKind = (k: unknown): k is NotificationKind =>
+  typeof k === "string" && (NOTIFICATION_KINDS as readonly string[]).includes(k);
+
 /**
- * Only these go out by email and Slack DM. Everything else shows in the portal
- * (bell and popups) only — the team asked for fewer emails.
+ * Which kinds leave the portal, set by an admin in Settings → Notifications.
+ * Everything always shows in the portal (bell and pop-ups).
  */
-export const SENT_OUTSIDE_PORTAL: readonly NotificationKind[] = ["escalation"];
-export const sentOutsidePortal = (kind: string) => (SENT_OUTSIDE_PORTAL as readonly string[]).includes(kind);
+export interface DeliveryRules {
+  email: string[];
+  dm: string[];
+}
+
+/** Used if the settings can't be read: only escalations leave the portal. */
+export const DEFAULT_DELIVERY: DeliveryRules = { email: ["escalation"], dm: ["escalation"] };
 
 export interface PlanMember {
   id: string;

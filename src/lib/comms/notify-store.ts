@@ -2,7 +2,7 @@ import "server-only";
 import { escalate, reminderDue } from "./contacts";
 import { ghlConfig, sendGhlMessage, upsertGhlContact } from "./ghl-api";
 import type { Db } from "./ghl-store";
-import { planEscalation, planReminder, sentOutsidePortal, type PlanContext, type PlanMember, type PlannedNotification } from "./notify-plan";
+import { DEFAULT_DELIVERY, planEscalation, planReminder, type DeliveryRules, type PlanContext, type PlanMember, type PlannedNotification } from "./notify-plan";
 import { textToHtml } from "./outbound";
 import { contactFromRow, contactPatch, slaFromJson } from "./rows";
 import { needsEscalation, slaState } from "./sla";
@@ -60,6 +60,7 @@ export async function saveNotifications(
   about: { contactId?: string; clientId?: string; link?: string; /** Send by email/Slack whatever the kind (test messages). */ alwaysSend?: boolean },
 ): Promise<number> {
   if (!planned.length) return 0;
+  const rules = about.alwaysSend ? null : await deliveryRules(sb);
   const link = about.link ?? (about.clientId ? `/dashboard/inbox?view=all&dept=all&c=${about.clientId}` : "/dashboard/inbox");
   const { error } = await sb.from("notifications").insert(
     planned.map((p) => ({
@@ -72,7 +73,8 @@ export async function saveNotifications(
       contact_id: about.contactId ?? null,
       client_id: about.clientId ?? null,
       // Portal-only kinds are never picked up by the email/Slack sender.
-      ...(about.alwaysSend || sentOutsidePortal(p.kind) ? {} : { slack_status: "skipped" as const, email_status: "skipped" as const }),
+      ...(rules && !rules.dm.includes(p.kind) ? { slack_status: "skipped" as const } : {}),
+      ...(rules && !rules.email.includes(p.kind) ? { email_status: "skipped" as const } : {}),
     })),
   );
   if (error) throw error;
@@ -80,7 +82,11 @@ export async function saveNotifications(
   return planned.length;
 }
 
-export const CHANNEL_EVENTS = ["escalation", "picked_up", "mention", "reminder", "new_message"] as const;
+/** Settings → Notifications: which kinds go out by email and Slack DM. */
+export async function deliveryRules(sb: Db): Promise<DeliveryRules> {
+  const { data } = await sb.from("settings").select("email_kinds, dm_kinds").eq("id", 1).maybeSingle();
+  return data ? { email: data.email_kinds, dm: data.dm_kinds } : DEFAULT_DELIVERY;
+}
 
 /**
  * The team channel gets one post per event (e.g. one escalation post tagging
@@ -189,7 +195,7 @@ interface Prefs {
 }
 const DEFAULT_PREFS: Prefs = { slack: true, email: true, new_messages: true, reminders: true };
 
-/** Escalations, pick-ups and mentions always go out; reminders and new-message alerts follow each person's choice. */
+/** On top of the admin's rules, each person can turn off reminders and new-message alerts for themselves. */
 function wants(prefs: Prefs, kind: string): boolean {
   if (kind === "new_message") return prefs.new_messages;
   if (kind === "reminder") return prefs.reminders;
