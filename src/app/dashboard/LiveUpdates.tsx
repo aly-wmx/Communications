@@ -166,6 +166,7 @@ export function LiveUpdates({
         })
         .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, () => refreshSoon(1000))
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, refreshForMessages)
+        .on("postgres_changes", { event: "*", schema: "public", table: "team_notes" }, refreshForMessages)
         .subscribe((status) => {
           setConnected(status === "SUBSCRIBED");
           // Catch up on anything missed while disconnected.

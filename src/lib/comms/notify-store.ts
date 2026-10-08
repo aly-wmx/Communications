@@ -57,10 +57,10 @@ export function planContext(c: ClientContact, clientName: string, sla: SlaSettin
 export async function saveNotifications(
   sb: Db,
   planned: PlannedNotification[],
-  about: { contactId?: string; clientId?: string },
+  about: { contactId?: string; clientId?: string; link?: string },
 ): Promise<number> {
   if (!planned.length) return 0;
-  const link = about.clientId ? `/dashboard/inbox?view=all&dept=all&c=${about.clientId}` : "/dashboard/inbox";
+  const link = about.link ?? (about.clientId ? `/dashboard/inbox?view=all&dept=all&c=${about.clientId}` : "/dashboard/inbox");
   const { error } = await sb.from("notifications").insert(
     planned.map((p) => ({
       recipient_id: p.recipientId,

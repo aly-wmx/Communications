@@ -12,6 +12,8 @@ export interface ChatMessage {
   sentByUser: boolean;
   occurredAt: string;
   attachments: Attachment[];
+  /** Set for team-only notes (who wrote it). */
+  noteAuthor?: string;
 }
 
 const CALL_CHANNELS = new Set(["Call", "Missed call", "Voicemail"]);
@@ -145,6 +147,8 @@ export function ChatThread({
               const out = m.direction === "outbound";
               const sameSide = (a?: ChatMessage) =>
                 a &&
+                !a.noteAuthor &&
+                !m.noteAuthor &&
                 !CALL_CHANNELS.has(a.channel) &&
                 a.direction === m.direction &&
                 dayLabel(a.occurredAt) === dayLabel(m.occurredAt) &&
@@ -163,7 +167,26 @@ export function ChatThread({
                     </div>
                   )}
 
-                  {isCall ? (
+                  {m.noteAuthor ? (
+                    <div className="flex justify-center py-1.5">
+                      <div className="w-full max-w-[85%] rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-[14px] shadow-sm">
+                        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                          🔒 Team note · {m.noteAuthor} · {time(m.occurredAt)}
+                        </p>
+                        <p className="whitespace-pre-wrap break-words text-zinc-900">
+                          {m.body.split(/(@[A-Z][\w]*(?: [A-Z][\w]*)?)/g).map((part, k) =>
+                            part.startsWith("@") ? (
+                              <strong key={k} className="text-amber-900">
+                                {part}
+                              </strong>
+                            ) : (
+                              part
+                            ),
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  ) : isCall ? (
                     <div className="flex justify-center py-1.5">
                       <span
                         className={`flex flex-wrap items-center justify-center gap-2 rounded-2xl px-3 py-1 text-xs ${

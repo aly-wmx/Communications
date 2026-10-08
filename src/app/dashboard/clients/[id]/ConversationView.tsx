@@ -59,6 +59,12 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
     supabase.from("team_members").select("id, name, escalation").order("name"),
   ]);
   if (!client) notFound();
+  const { data: notes } = await supabase
+    .from("team_notes")
+    .select("id, author_id, body, created_at")
+    .eq("client_id", id)
+    .order("created_at", { ascending: false })
+    .limit(200);
   const { data: stageHistory } = await supabase
     .from("client_stage_history")
     .select("to_stage, changed_by, changed_at")
@@ -78,6 +84,24 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
     occurredAt: m.occurred_at,
     attachments: parseAttachments(m.attachments),
   }));
+  // Team notes sit in the same timeline (within the window of messages shown).
+  const windowStart = hasOlder ? rows[0]?.occurred_at : "";
+  const nameFor = (authorId: string | null) => (team ?? []).find((t) => t.id === authorId)?.name ?? "Former teammate";
+  for (const n of notes ?? []) {
+    if (windowStart && n.created_at < windowStart) continue;
+    if (before && n.created_at >= before) continue;
+    messages.push({
+      id: `note:${n.id}`,
+      direction: "note",
+      channel: "Note",
+      body: n.body,
+      sentByUser: true,
+      occurredAt: n.created_at,
+      attachments: [],
+      noteAuthor: n.author_id === me?.memberId ? "You" : nameFor(n.author_id),
+    });
+  }
+  messages.sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
   const total = count ?? messages.length;
   const sep = basePath.includes("?") ? "&" : "?";
   const olderHref = hasOlder ? `${basePath}${sep}before=${encodeURIComponent(rows[0].occurred_at)}` : undefined;
@@ -150,8 +174,14 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
 
           <ChatThread messages={messages} clientName={client.name} olderHref={olderHref} newerHref={newerHref} />
 
-          {me && canSendMessages(me.role) && (
-            <Composer clientId={client.id} hasPhone={Boolean(client.phone)} hasEmail={Boolean(client.email)} />
+          {me && (
+            <Composer
+              clientId={client.id}
+              hasPhone={Boolean(client.phone)}
+              hasEmail={Boolean(client.email)}
+              canSend={canSendMessages(me.role)}
+              team={(team ?? []).filter((t) => t.id !== me.memberId)}
+            />
           )}
         </section>
 

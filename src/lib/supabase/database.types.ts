@@ -325,6 +325,12 @@ export type Database = {
         Update: { id?: number; sla?: Json; updated_at?: string };
         Relationships: [];
       };
+      team_notes: {
+        Row: { author_id: string | null; body: string; client_id: string | null; created_at: string; id: string; mentions: string[] };
+        Insert: { author_id?: string | null; body: string; client_id?: string | null; created_at?: string; id?: string; mentions?: string[] };
+        Update: { author_id?: string | null; body?: string; client_id?: string | null; created_at?: string; id?: string; mentions?: string[] };
+        Relationships: [];
+      };
       team_members: {
         Row: {
           created_at: string;

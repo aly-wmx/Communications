@@ -10,6 +10,7 @@ const MAIN: Tab[] = [
   { href: "/dashboard", label: "Overview" },
   { href: "/dashboard/inbox", label: "Inbox" },
   { href: "/dashboard/escalations", label: "Escalations" },
+  { href: "/dashboard/team-chat", label: "Team Chat" },
   { href: "/dashboard/calls", label: "Call Log" },
   { href: "/dashboard/reports", label: "Reports" },
   { href: "/dashboard/archived", label: "Archived" },
