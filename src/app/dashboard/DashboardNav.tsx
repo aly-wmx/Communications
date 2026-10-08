@@ -2,26 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { Role } from "@/lib/roles";
+import { PAGES, type PageAccess, type Role } from "@/lib/roles";
 
-type Tab = { href: string; label: string; adminOnly?: boolean };
+type Tab = Pick<PageAccess, "href" | "label">;
 
-const MAIN: Tab[] = [
-  { href: "/dashboard", label: "Overview" },
-  { href: "/dashboard/inbox", label: "Inbox" },
-  { href: "/dashboard/escalations", label: "Escalations" },
-  { href: "/dashboard/team-chat", label: "Team Chat" },
-  { href: "/dashboard/calls", label: "Call Log" },
-  { href: "/dashboard/reports", label: "Reports" },
-  { href: "/dashboard/archived", label: "Archived" },
-  { href: "/dashboard/notifications", label: "Notifications" },
-];
-
-const ADMIN: Tab[] = [
-  { href: "/dashboard/team", label: "Team", adminOnly: true },
-  { href: "/dashboard/businesses", label: "Businesses", adminOnly: true },
-  { href: "/dashboard/settings", label: "Settings", adminOnly: true },
-];
+// From the shared access list, so the menu matches what "My access" tells people.
+const MAIN: Tab[] = PAGES.filter((p) => p.roles.length > 1);
+const ADMIN: Tab[] = PAGES.filter((p) => p.roles.length === 1 && p.roles[0] === "admin");
 
 export function DashboardNav({ role, queueBadge, escalationBadge }: { role: Role; queueBadge: number; escalationBadge: number }) {
   const pathname = usePathname();

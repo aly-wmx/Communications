@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { EditableSelectCell, EditableTextCell } from "@/components/EditableCell";
 import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { DEPARTMENTS } from "@/lib/stages";
@@ -120,6 +121,9 @@ export function MemberRow({
         {!canSend && <p className="mt-0.5 text-[11px] font-medium text-amber-700">Waiting for approval</p>}
       </td>
       <td className="whitespace-nowrap px-2 py-2 text-right">
+        <Link href={`/dashboard/access?member=${member.id}`} className="mr-3 text-xs font-semibold text-[#8A6A3A] hover:underline">
+          View access
+        </Link>
         {member.email && !isMe && (
           <button
             type="button"
