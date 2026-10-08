@@ -7,10 +7,14 @@ import { createClient } from "@/lib/supabase/client";
 import { incomingAlert, type AlertRow, type IncomingAlert } from "@/lib/comms/alerts";
 import { NotificationBell } from "./NotificationBell";
 
-interface Toast extends IncomingAlert {
+export interface Toast extends IncomingAlert {
   clientName: string;
   businessName: string;
   link?: string;
+  /** When it arrived, shown on the card. */
+  at: string;
+  /** Hovered, focused or expanded: stays until closed instead of timing out. */
+  pinned?: boolean;
 }
 
 const NOTIFICATION_LABEL: Record<string, string> = {
@@ -103,6 +107,12 @@ export function LiveUpdates({
   }, [meId, teamNames, businessNames, currentBusinessId, sound]);
 
   const dismiss = useCallback((key: string) => setToasts((list) => list.filter((t) => t.key !== key)), []);
+  /** Timed close: skipped once someone is reading it. */
+  const expire = useCallback((key: string) => setToasts((list) => list.filter((t) => t.key !== key || t.pinned)), []);
+  const pin = useCallback(
+    (key: string) => setToasts((list) => list.map((t) => (t.key === key && !t.pinned ? { ...t, pinned: true } : t))),
+    [],
+  );
 
   useEffect(() => {
     const supabase = createClient();
@@ -121,19 +131,28 @@ export function LiveUpdates({
       if (seen.current.has(alert.key)) return;
       seen.current.add(alert.key);
 
-      const { data: client } = await supabase
-        .from("clients")
-        .select("name, business_id")
-        .eq("id", alert.clientId)
-        .maybeSingle();
+      // The contact only carries a shortened preview; show the client's full latest message.
+      const [{ data: client }, { data: latest }] = await Promise.all([
+        supabase.from("clients").select("name, business_id").eq("id", alert.clientId).maybeSingle(),
+        supabase
+          .from("messages")
+          .select("body")
+          .eq("client_id", alert.clientId)
+          .eq("direction", "inbound")
+          .order("occurred_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
       const p = props.current;
       const clientName = client?.name ?? "A client";
       const businessName =
         client && client.business_id !== p.currentBusinessId ? (p.businessNames[client.business_id] ?? "") : "";
-      const toast: Toast = { ...alert, clientName, businessName };
+      const preview = alert.body.replace(/…$/, "");
+      const body = latest?.body && (!preview || latest.body.startsWith(preview.slice(0, 40))) ? latest.body : alert.body;
+      const toast: Toast = { ...alert, body, clientName, businessName, link: `/dashboard/clients/${alert.clientId}`, at: new Date().toISOString() };
 
       setToasts((list) => [toast, ...list].slice(0, 4));
-      window.setTimeout(() => dismiss(alert.key), alert.urgent ? 20_000 : 10_000);
+      window.setTimeout(() => expire(alert.key), alert.urgent ? 30_000 : 15_000);
       if (p.sound) chime(alert.urgent);
 
       if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
@@ -184,7 +203,7 @@ export function LiveUpdates({
       window.clearTimeout(refreshTimer.current);
       void supabase.removeChannel(channel);
     };
-  }, [router, dismiss]);
+  }, [router, expire]);
 
   /** Escalations, reminders, pick-ups and mentions pop up too (new messages already have their own alert). */
   const onNotification = useCallback(
@@ -201,9 +220,10 @@ export function LiveUpdates({
         clientName: n.title,
         businessName: "",
         link: n.link,
+        at: new Date().toISOString(),
       };
       setToasts((list) => [toast, ...list].slice(0, 4));
-      window.setTimeout(() => dismiss(n.id), n.urgent ? 30_000 : 12_000);
+      window.setTimeout(() => expire(n.id), n.urgent ? 30_000 : 15_000);
       if (props.current.sound) chime(n.urgent);
       if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
         const desk = new Notification(n.title, { body: n.body.slice(0, 180), tag: n.id });
@@ -214,7 +234,7 @@ export function LiveUpdates({
         };
       }
     },
-    [dismiss, router],
+    [expire, router],
   );
 
   function toggleSound() {
@@ -262,42 +282,78 @@ export function LiveUpdates({
         </div>
       </div>
 
-      <div aria-live="polite" className="pointer-events-none fixed right-4 top-4 z-50 flex w-80 flex-col gap-2">
+      <div
+        aria-live="polite"
+        className="pointer-events-none fixed inset-x-4 top-4 z-50 flex flex-col gap-2 sm:left-auto sm:right-4 sm:w-[26rem]"
+      >
         {toasts.map((t) => (
-          <div
-            key={t.key}
-            role="status"
-            className={`pointer-events-auto rounded-lg border bg-white p-3 shadow-lg ${
-              t.urgent ? "border-red-300 border-l-4 border-l-red-600" : "border-zinc-200 border-l-4 border-l-[#B08D57]"
-            }`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                {t.urgent && <span className="text-red-700">Urgent · </span>}
-                {t.headline}
-                {t.businessName && <span className="font-normal normal-case"> · {t.businessName}</span>}
-              </p>
-              <button
-                type="button"
-                onClick={() => dismiss(t.key)}
-                aria-label="Dismiss"
-                className="-mt-1 text-zinc-400 hover:text-zinc-700"
-              >
-                ×
-              </button>
-            </div>
-            <p className="mt-0.5 text-sm font-semibold text-zinc-900">{t.clientName}</p>
-            {t.body && <p className="mt-0.5 line-clamp-2 text-sm text-zinc-600">{t.body}</p>}
-            <Link
-              href={t.link || "/dashboard/inbox?view=waiting"}
-              onClick={() => dismiss(t.key)}
-              className="mt-2 inline-block text-xs font-semibold text-[#B08D57] hover:underline"
-            >
-              {t.link ? "Open →" : "Open queue →"}
-            </Link>
-          </div>
+          <ToastCard key={t.key} toast={t} onPin={() => pin(t.key)} onDismiss={() => dismiss(t.key)} />
         ))}
       </div>
     </>
+  );
+}
+
+const LONG = 220;
+
+export function ToastCard({ toast: t, onPin, onDismiss }: { toast: Toast; onPin: () => void; onDismiss: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const long = t.body.length > LONG || t.body.split("\n").length > 4;
+  const time = new Date(t.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+  return (
+    <div
+      role="status"
+      onMouseEnter={onPin}
+      onFocus={onPin}
+      className={`pointer-events-auto rounded-lg border border-l-4 bg-white p-3 shadow-lg ${
+        t.urgent ? "border-red-300 border-l-red-600" : "border-zinc-200 border-l-[#B08D57]"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 text-xs font-semibold uppercase tracking-wide text-zinc-600">
+          {t.urgent && <span className="text-red-700">Urgent · </span>}
+          {t.headline}
+          {t.businessName && <span className="font-normal normal-case"> · {t.businessName}</span>}
+          <span className="font-normal normal-case text-zinc-500"> · {time}</span>
+        </p>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss notification"
+          className="-mr-1 -mt-1 grid size-7 shrink-0 place-items-center rounded-md text-lg leading-none text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
+        >
+          ×
+        </button>
+      </div>
+      <p className="break-words text-sm font-semibold text-zinc-900">{t.clientName}</p>
+      {t.body && (
+        <p
+          className={`mt-1 whitespace-pre-wrap break-words text-sm leading-snug text-zinc-700 ${
+            expanded ? "max-h-72 overflow-y-auto pr-1" : long ? "line-clamp-4" : ""
+          }`}
+        >
+          {t.body}
+        </p>
+      )}
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <Link href={t.link || "/dashboard/inbox?view=waiting"} onClick={onDismiss} className="text-xs font-semibold text-[#8A6A3A] hover:underline">
+          {t.link ? "Open →" : "Open inbox →"}
+        </Link>
+        {long && (
+          <button
+            type="button"
+            onClick={() => {
+              onPin();
+              setExpanded((e) => !e);
+            }}
+            aria-expanded={expanded}
+            className="text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:underline"
+          >
+            {expanded ? "Show less" : "Show full message"}
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
