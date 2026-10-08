@@ -283,13 +283,19 @@ export function ChatThread({
                               : `${first ? "" : "rounded-tl-md"} ${last ? "rounded-bl-sm" : "rounded-bl-md"}`
                           }`}
                         >
+                          {/* Every bubble says where it came from, so texts and emails are easy to tell apart. */}
+                          <p className="mb-1">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                out && !automated ? "bg-white/15 text-white" : channelStyle(m.channel).tag
+                              }`}
+                            >
+                              <span aria-hidden>{channelStyle(m.channel).icon}</span>
+                              {m.channel === "Text" ? "Text message" : channelStyle(m.channel).label}
+                            </span>
+                          </p>
                           {m.emailMeta && (m.emailMeta.from || m.emailMeta.to.length || m.emailMeta.subject) && (
                             <EmailHeader meta={m.emailMeta} light={out && !automated} />
-                          )}
-                          {m.channel !== "Text" && !m.emailMeta && (
-                            <p className={`mb-0.5 text-[10px] font-semibold uppercase tracking-wide ${out && !automated ? "text-white/70" : "text-zinc-500"}`}>
-                              {channelStyle(m.channel).icon} {channelStyle(m.channel).label}
-                            </p>
                           )}
                           {(m.body || !m.attachments.length) && (
                             <p className="whitespace-pre-wrap break-words">
