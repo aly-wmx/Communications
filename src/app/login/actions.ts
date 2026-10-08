@@ -34,12 +34,10 @@ export async function signIn(
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    // Supabase's own messages here are standard and safe to show as-is
-    // ("Invalid login credentials", "Email not confirmed", etc.) — a
-    // blanket "didn't work" string was actively hiding which of those it
-    // was, which is exactly the "nothing fails silently" rule this project
-    // is supposed to follow.
-    return { error: error.message };
+    // Don't reveal whether an account exists ("Email not confirmed" would).
+    // Rate limiting is the one case worth saying plainly.
+    if (error.status === 429) return { error: "Too many attempts. Wait a minute and try again." };
+    return { error: "Wrong email or password. If you haven't set a password yet, use Continue with Google or Forgot password." };
   }
 
   redirect("/dashboard");

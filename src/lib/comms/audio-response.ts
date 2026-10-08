@@ -67,13 +67,19 @@ export function audioType(bytes: Uint8Array, upstreamType: string | null): strin
   if (tag === "RIFF") return "audio/wav";
   if (tag === "OggS") return "audio/ogg";
   if (tag.startsWith("ID3") || (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0)) return "audio/mpeg";
-  return upstreamType?.startsWith("audio/") ? upstreamType : "audio/mpeg";
+  const base = upstreamType?.split(";")[0].trim().toLowerCase() ?? "";
+  return /^audio\/(mpeg|mp4|x-m4a|aac|ogg|wav|x-wav|amr|3gpp|webm)$/.test(base) ? base : "audio/mpeg";
 }
 
 /** Serve bytes as audio, honouring "Range: bytes=start-end" so the player can seek. */
 export function serveAudio(bytes: Uint8Array, type: string, range: string | null): Response {
   const total = bytes.length;
-  const base = { "Content-Type": type, "Accept-Ranges": "bytes", "Cache-Control": "private, max-age=3600" };
+  const base = {
+    "Content-Type": type,
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "private, max-age=3600",
+    "X-Content-Type-Options": "nosniff",
+  };
   const m = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
   if (m && (m[1] || m[2])) {
     let start = m[1] ? Number(m[1]) : Math.max(0, total - Number(m[2]));

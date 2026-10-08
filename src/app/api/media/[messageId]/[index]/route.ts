@@ -37,7 +37,14 @@ export async function GET(_req: NextRequest, ctx: RouteContext<"/api/media/[mess
   const isImage = /^image\/(png|jpe?g|gif|webp|heic|heif|bmp)$/.test(base);
   const isPlayable = /^(video\/(mp4|quicktime|webm|3gpp|3gpp2)|audio\/(mpeg|mp4|x-m4a|aac|ogg|wav|x-wav|amr|3gpp))$/.test(base);
   const inline = isImage || isPlayable;
-  const name = decodeURIComponent(new URL(url).pathname.split("/").pop() || "attachment").replace(/[^\w.\- ]/g, "_");
+  const rawName = new URL(url).pathname.split("/").pop() || "attachment";
+  let decoded = rawName;
+  try {
+    decoded = decodeURIComponent(rawName);
+  } catch {
+    // A stray "%" in the stored link: fall back to the raw name.
+  }
+  const name = decoded.replace(/[^\w.\- ]/g, "_");
   const headers = new Headers({
     // Anything that isn't a plain image, video or audio is downloaded, never rendered (no HTML/SVG from outside).
     "Content-Type": inline ? base : "application/octet-stream",
