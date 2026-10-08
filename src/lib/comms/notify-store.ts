@@ -1,6 +1,6 @@
 import "server-only";
 import { escalate, reminderDue } from "./contacts";
-import { ghlConfig, sendGhlMessage, upsertGhlContact } from "./ghl-api";
+import { ghlConfig, ghlContactEmail, sendGhlMessage, upsertGhlContact } from "./ghl-api";
 import type { Db } from "./ghl-store";
 import { DEFAULT_DELIVERY, planEscalation, planReminder, type DeliveryRules, type PlanContext, type PlanMember, type PlannedNotification } from "./notify-plan";
 import { textToHtml } from "./outbound";
@@ -229,10 +229,24 @@ async function teamContactId(sb: Db, member: TeamRow, token: string, locationId:
   return id;
 }
 
+/**
+ * Notifications are internal only. Last check before an email leaves: the GHL
+ * contact must carry this teammate's own email address, so it can never reach
+ * a client. A mismatched link is cleared and the email is not sent.
+ */
+async function assertOwnContact(sb: Db, member: TeamRow, contactId: string, token: string) {
+  const contactEmail = await ghlContactEmail(token, contactId);
+  if (contactEmail && contactEmail === member.email.trim().toLowerCase()) return;
+  await sb.from("team_members").update({ ghl_contact_id: null }).eq("id", member.id);
+  member.ghl_contact_id = null;
+  throw new Error(`Blocked: GoHighLevel contact ${contactId} isn't ${member.email}. Portal notifications only go to team members.`);
+}
+
 async function sendEmail(sb: Db, member: TeamRow, n: { title: string; body: string; link: string }) {
   const { token, locationId, missing } = ghlConfig();
   if (missing.length) throw new Error("GoHighLevel isn't connected.");
   const contactId = await teamContactId(sb, member, token, locationId);
+  await assertOwnContact(sb, member, contactId, token);
   const url = `${siteUrl()}${n.link}`;
   const text = `${n.body}\n\nOpen in the portal: ${url}`;
   await sendGhlMessage(token, {

@@ -161,6 +161,17 @@ export async function upsertGhlContact(
 }
 
 /** Update a GHL contact's name, phone and email to match the portal. */
+/** A GHL contact's email address (lowercased), used to check who a message would really go to. */
+export async function ghlContactEmail(token: string, contactId: string): Promise<string> {
+  const res = await fetch(`${GHL}/contacts/${encodeURIComponent(contactId)}`, {
+    headers: { Authorization: `Bearer ${token}`, Version: "2021-07-28", Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new GhlError(res.status, `Couldn't look up the GoHighLevel contact (error ${res.status}).`);
+  const body = (await res.json()) as { contact?: { email?: unknown } };
+  return typeof body.contact?.email === "string" ? body.contact.email.trim().toLowerCase() : "";
+}
+
 export async function updateGhlContact(
   token: string,
   contactId: string,
