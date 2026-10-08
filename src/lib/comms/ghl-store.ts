@@ -61,6 +61,7 @@ interface ClientRow {
   email: string;
   owner_id: string | null;
   ghl_contact_id: string | null;
+  archived_at: string | null;
 }
 
 /** Escape LIKE wildcards so an exact match stays exact. */
@@ -78,7 +79,7 @@ export interface ClientIdentity {
  * Uses indexed lookups so it stays fast with thousands of clients.
  */
 export async function ensureClient(sb: Db, who: ClientIdentity, businessId: string): Promise<ClientRow> {
-  const cols = "id,name,phone,email,owner_id,ghl_contact_id";
+  const cols = "id,name,phone,email,owner_id,ghl_contact_id,archived_at";
   if (who.ghlContactId) {
     const { data } = await sb.from("clients").select(cols).eq("ghl_contact_id", who.ghlContactId).maybeSingle();
     if (data) return data as ClientRow;
@@ -151,11 +152,24 @@ export async function storeMessages(sb: Db, clientId: string, records: MessageRe
         sent_by_user: r.sentByUser,
         source: r.source,
         occurred_at: r.occurredAt,
+        call_status: r.callStatus,
+        duration_seconds: r.durationSeconds,
+        attachments: r.attachments,
       })),
       { onConflict: "id", ignoreDuplicates: true },
     )
     .select("id");
   if (error) throw error;
+
+  // Messages copied before call details and photos were kept: fill those in (body is left alone).
+  const inserted = new Set((data ?? []).map((d) => d.id));
+  for (const r of records) {
+    if (inserted.has(r.id) || (!r.callStatus && !r.attachments.length)) continue;
+    await sb
+      .from("messages")
+      .update({ call_status: r.callStatus, duration_seconds: r.durationSeconds, attachments: r.attachments })
+      .eq("id", r.id);
+  }
   return data?.length ?? 0;
 }
 
@@ -272,7 +286,12 @@ async function notifyNewMessage(sb: Db, contactId: string, clientId: string, cli
   await saveNotifications(sb, planned, { contactId, clientId });
 }
 
-export type RecordResult = { action: "created" | "appended" | "responded" | "duplicate"; contactId?: string; clientId?: string; updated?: number };
+export type RecordResult = {
+  action: "created" | "appended" | "responded" | "duplicate" | "archived";
+  contactId?: string;
+  clientId?: string;
+  updated?: number;
+};
 
 /** Record one GHL message. Safe to call more than once for the same message. */
 export async function recordGhlEvent(sb: Db, e: GhlEvent, businessId: string): Promise<RecordResult> {
@@ -293,6 +312,8 @@ export async function recordGhlEvent(sb: Db, e: GhlEvent, businessId: string): P
 
   try {
     const client = await findOrCreateClient(sb, e, businessId);
+    // Archived or spam: the message is kept on their thread by the sync, but it never reopens the queue or alerts anyone.
+    if (client.archived_at && e.direction === "inbound") return { action: "archived", clientId: client.id };
     const result = e.direction === "outbound" ? await handleOutbound(sb, e, client) : await handleInbound(sb, e, client);
     if (e.messageId && result.contactId) {
       await sb.from("ghl_messages").update({ contact_id: result.contactId }).eq("id", e.messageId);

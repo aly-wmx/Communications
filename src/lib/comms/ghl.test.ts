@@ -151,3 +151,13 @@ describe('unansweredTail', () => {
     expect(unansweredTail([m('inbound', false, '2026-10-01T10:00:00Z'), m('outbound', true, '2026-10-01T11:00:00Z')])).toEqual([]);
   });
 });
+
+describe('messageRecordFromApi call details and attachments', () => {
+  it('keeps call status, length and photos', () => {
+    const conv = { id: 'cv', contactId: 'c' };
+    const call = messageRecordFromApi(conv, { id: 'm', direction: 'inbound', messageType: 'TYPE_CALL', dateAdded: '2026-10-02T14:00:00Z', meta: { call: { status: 'completed', duration: 95 } } }, now);
+    expect(call).toMatchObject({ callStatus: 'completed', durationSeconds: 95, attachments: [] });
+    const mms = messageRecordFromApi(conv, { id: 'n', direction: 'inbound', messageType: 'TYPE_SMS', body: 'Look', dateAdded: '2026-10-02T14:00:00Z', attachments: ['https://storage.googleapis.com/msgsndr/a.jpg', 'ftp://x'] }, now);
+    expect(mms).toMatchObject({ callStatus: '', durationSeconds: null, attachments: ['https://storage.googleapis.com/msgsndr/a.jpg'] });
+  });
+});

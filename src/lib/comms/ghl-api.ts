@@ -225,3 +225,26 @@ export async function fetchEmailText(token: string, messageId: string, htmlToTex
   }
   return "";
 }
+
+async function contactTags(token: string, contactId: string, tags: string[], method: "POST" | "DELETE"): Promise<void> {
+  const res = await fetch(`${GHL}/contacts/${encodeURIComponent(contactId)}/tags`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Version: "2021-07-28",
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ tags }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new GhlError(
+      res.status,
+      res.status === 403 ? "The GoHighLevel Private Integration needs the contacts.write scope." : `GoHighLevel returned ${res.status}.`,
+    );
+  }
+}
+
+export const addGhlTags = (token: string, contactId: string, tags: string[]) => contactTags(token, contactId, tags, "POST");
+export const removeGhlTags = (token: string, contactId: string, tags: string[]) => contactTags(token, contactId, tags, "DELETE");

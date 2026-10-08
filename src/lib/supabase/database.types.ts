@@ -29,6 +29,9 @@ export type Database = {
       };
       clients: {
         Row: {
+          archive_reason: string | null;
+          archived_at: string | null;
+          archived_by: string;
           business_id: string;
           created_at: string;
           email: string;
@@ -41,6 +44,9 @@ export type Database = {
           project: string;
         };
         Insert: {
+          archive_reason?: string | null;
+          archived_at?: string | null;
+          archived_by?: string;
           business_id: string;
           created_at?: string;
           email?: string;
@@ -53,6 +59,9 @@ export type Database = {
           project?: string;
         };
         Update: {
+          archive_reason?: string | null;
+          archived_at?: string | null;
+          archived_by?: string;
           business_id?: string;
           created_at?: string;
           email?: string;
@@ -181,12 +190,15 @@ export type Database = {
       };
       messages: {
         Row: {
+          attachments: Json;
           body: string;
+          call_status: string;
           channel: string;
           client_id: string;
           conversation_id: string;
           created_at: string;
           direction: string;
+          duration_seconds: number | null;
           id: string;
           occurred_at: string;
           sent_by_user: boolean;
@@ -194,12 +206,15 @@ export type Database = {
           status: string;
         };
         Insert: {
+          attachments?: Json;
           body?: string;
+          call_status?: string;
           channel: string;
           client_id: string;
           conversation_id?: string;
           created_at?: string;
           direction: string;
+          duration_seconds?: number | null;
           id: string;
           occurred_at: string;
           sent_by_user?: boolean;
@@ -207,12 +222,15 @@ export type Database = {
           status?: string;
         };
         Update: {
+          attachments?: Json;
           body?: string;
+          call_status?: string;
           channel?: string;
           client_id?: string;
           conversation_id?: string;
           created_at?: string;
           direction?: string;
+          duration_seconds?: number | null;
           id?: string;
           occurred_at?: string;
           sent_by_user?: boolean;
@@ -335,6 +353,8 @@ export type Database = {
     Views: {
       client_overview: {
         Row: {
+          archive_reason: string | null;
+          archived_at: string | null;
           business_id: string;
           email: string;
           id: string;

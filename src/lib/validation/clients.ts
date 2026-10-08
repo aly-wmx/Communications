@@ -16,3 +16,8 @@ export const clientUpdateSchema = z.object({
 });
 
 export type ClientUpdateInput = z.input<typeof clientUpdateSchema>;
+
+export const archiveSchema = z.object({
+  clientId: z.string().min(1).max(100),
+  reason: z.enum(["spam", "archived"]),
+});

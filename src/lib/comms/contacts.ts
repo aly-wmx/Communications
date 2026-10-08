@@ -64,8 +64,8 @@ export function markResponded(c: ClientContact, byId: string, now = new Date(), 
   });
 }
 
-export function resolve(c: ClientContact, byId: string, now = new Date()) {
-  return withEvent(c, byId, 'Resolved', now, { status: 'Resolved', resolvedAt: now.toISOString() });
+export function resolve(c: ClientContact, byId: string, now = new Date(), reason = '') {
+  return withEvent(c, byId, reason ? `Resolved — ${reason}` : 'Resolved', now, { status: 'Resolved', resolvedAt: now.toISOString() });
 }
 
 export function waitOnClient(c: ClientContact, byId: string, now = new Date()) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { RecordingPlayer } from "./RecordingPlayer";
+import { channelStyle, type Attachment } from "@/lib/comms/channels";
 
 export interface ChatMessage {
   id: string;
@@ -10,6 +11,7 @@ export interface ChatMessage {
   body: string;
   sentByUser: boolean;
   occurredAt: string;
+  attachments: Attachment[];
 }
 
 const CALL_CHANNELS = new Set(["Call", "Missed call", "Voicemail"]);
@@ -38,7 +40,33 @@ function initials(name: string) {
   return ((parts[0]?.[0] ?? "?") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }
 
-const CHANNEL_TAG: Record<string, string> = { Email: "✉ Email", "Portal message": "💬 Chat" };
+/** Photos as thumbnails (tap to open full size), other files as download chips. */
+function Attachments({ messageId, items, light }: { messageId: string; items: Attachment[]; light: boolean }) {
+  if (!items.length) return null;
+  const src = (i: number) => `/api/media/${encodeURIComponent(messageId)}/${i}`;
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {items.map((a, i) =>
+        a.isImage ? (
+          <a key={i} href={src(i)} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg">
+            {/* eslint-disable-next-line @next/next/no-img-element -- streamed through the portal, not a static asset */}
+            <img src={src(i)} alt={a.name} loading="lazy" className="max-h-60 max-w-full rounded-lg object-cover" />
+          </a>
+        ) : (
+          <a
+            key={i}
+            href={src(i)}
+            className={`inline-flex max-w-full items-center gap-1 truncate rounded-md px-2 py-1 text-xs underline-offset-2 hover:underline ${
+              light ? "bg-white/15 text-white" : "bg-zinc-100 text-zinc-700"
+            }`}
+          >
+            📎 {a.name}
+          </a>
+        ),
+      )}
+    </div>
+  );
+}
 
 /**
  * Messaging-app style thread: client on the left, team on the right, grouped
@@ -174,7 +202,7 @@ export function ChatThread({
                               ? automated
                                 ? "border border-[#1C2B47]/15 bg-white text-zinc-700"
                                 : "bg-[#1C2B47] text-white"
-                              : "bg-white text-zinc-900"
+                              : `border-l-4 bg-white text-zinc-900 ${channelStyle(m.channel).border}`
                           } rounded-2xl ${
                             // Grouped bubbles: tighter corners where they meet, a small "tail" on the last one.
                             out
@@ -182,18 +210,21 @@ export function ChatThread({
                               : `${first ? "" : "rounded-tl-md"} ${last ? "rounded-bl-sm" : "rounded-bl-md"}`
                           }`}
                         >
-                          {CHANNEL_TAG[m.channel] && (
-                            <p className={`mb-0.5 text-[10px] font-semibold uppercase tracking-wide ${out && !automated ? "text-white/60" : "text-zinc-400"}`}>
-                              {CHANNEL_TAG[m.channel]}
+                          {m.channel !== "Text" && (
+                            <p className={`mb-0.5 text-[10px] font-semibold uppercase tracking-wide ${out && !automated ? "text-white/70" : "text-zinc-500"}`}>
+                              {channelStyle(m.channel).icon} {channelStyle(m.channel).label}
                             </p>
                           )}
-                          <p className="whitespace-pre-wrap break-words">
-                            {m.body || (
-                              <em className="opacity-70">
-                                {m.channel === "Email" ? "Email — open in GoHighLevel to read it" : "(no text)"}
-                              </em>
-                            )}
-                          </p>
+                          {(m.body || !m.attachments.length) && (
+                            <p className="whitespace-pre-wrap break-words">
+                              {m.body || (
+                                <em className="opacity-70">
+                                  {m.channel === "Email" ? "Email — open in GoHighLevel to read it" : "(no text)"}
+                                </em>
+                              )}
+                            </p>
+                          )}
+                          <Attachments messageId={m.id} items={m.attachments} light={out && !automated} />
                         </div>
                         {last && (
                           <p className="mt-1 px-1 text-[10px] text-zinc-400">

@@ -7,6 +7,10 @@ import { formatMinutes, needsEscalation, slaState } from "@/lib/comms/sla";
 import type { ClientContact, SlaSettings } from "@/lib/comms/types";
 import type { QueueAction } from "@/lib/validation/queue";
 import { queueAction } from "./actions";
+import { archiveClient } from "../clients/actions";
+import { ChannelTag } from "@/components/ChannelTag";
+import { ResolveMenu } from "@/components/ResolveMenu";
+import { channelStyle } from "@/lib/comms/channels";
 import { EscalateButton, type EscalationMember } from "../escalations/EscalateButton";
 
 export interface QueueClient {
@@ -148,8 +152,8 @@ export function QueueList({
             return (
               <li
                 key={c.id}
-                className={`grid gap-3 px-4 py-3 md:grid-cols-[10rem_minmax(0,1fr)_9rem_auto] md:items-center ${
-                  flagged ? "bg-red-50/60 shadow-[inset_3px_0_0_#B91C1C]" : ""
+                className={`grid gap-3 border-l-4 px-4 py-3 md:grid-cols-[10rem_minmax(0,1fr)_9rem_auto] md:items-center ${
+                  flagged ? "border-l-red-600 bg-red-50/60" : channelStyle(c.channel).border
                 } ${busy ? "opacity-60" : ""}`}
               >
                 <div>
@@ -169,8 +173,9 @@ export function QueueList({
                     )}
                   </p>
                   <p className="truncate text-sm text-zinc-700">{c.summary || <em className="text-zinc-400">No message text</em>}</p>
-                  <p className="text-xs text-zinc-500">
-                    {c.channel} · received {ago(c.receivedAt, now)}
+                  <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-zinc-500">
+                    <ChannelTag channel={c.channel} />
+                    received {ago(c.receivedAt, now)}
                     {c.source === "ghl" && " · via GoHighLevel"}
                     {" · "}
                     <Link href={`/dashboard/clients/${c.clientId}`} className="font-semibold text-[#B08D57] hover:underline">
@@ -215,14 +220,28 @@ export function QueueList({
                     <EscalateButton contactId={c.id} clientName={client?.name ?? "this client"} team={team} meId={meId} highlight={flagged} />
                   )}
                   {c.status !== "Resolved" ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => run({ action: "resolve", contactId: c.id })}
-                      className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:border-zinc-400 hover:text-zinc-900"
-                    >
-                      Resolve
-                    </button>
+                    <>
+                      <ResolveMenu disabled={busy} onResolve={(reason) => run({ action: "resolve", contactId: c.id, reason })} />
+                      <button
+                        type="button"
+                        disabled={busy}
+                        title="Mark as spam — moves this client to the Archived folder"
+                        onClick={() => {
+                          if (!window.confirm(`Mark ${client?.name ?? "this client"} as spam? They move to the Archived folder and future messages won't alert anyone.`)) return;
+                          setError(null);
+                          setPendingId(c.id);
+                          startTransition(async () => {
+                            const r = await archiveClient({ clientId: c.clientId, reason: "spam" });
+                            if (!r.ok) setError(r.error);
+                            else if (r.warning) setError(r.warning);
+                            setPendingId(null);
+                          });
+                        }}
+                        className="rounded-md px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-100 hover:text-red-700"
+                      >
+                        🚫 Spam
+                      </button>
+                    </>
                   ) : (
                     <button
                       type="button"

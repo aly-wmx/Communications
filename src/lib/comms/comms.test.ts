@@ -186,3 +186,11 @@ describe('business hours in a time zone', () => {
     expect(slaState(c, s, new Date('2026-10-05T17:00:00Z')).waitedMinutes).toBe(60);
   });
 });
+
+describe('resolve with a reason', () => {
+  it('records the reason in the history', () => {
+    const c = resolve(contact('2026-10-05T09:00'), 'van', new Date('2026-10-05T10:00:00Z'), 'Handled by phone');
+    expect(c.status).toBe('Resolved');
+    expect(c.history.at(-1)?.message).toBe('Resolved — Handled by phone');
+  });
+});

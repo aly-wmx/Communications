@@ -123,7 +123,8 @@ export interface GhlApiMessage {
   userId?: string;
   source?: string;
   status?: string;
-  meta?: { call?: { status?: string } };
+  meta?: { call?: { status?: string; duration?: number | string } };
+  attachments?: unknown;
 }
 
 export function toMillis(v: unknown): number {
@@ -193,6 +194,11 @@ export interface MessageRecord {
   sentByUser: boolean;
   source: string;
   occurredAt: string;
+  /** GHL call status (completed, no-answer, busy, voicemail…), '' for non-calls. */
+  callStatus: string;
+  durationSeconds: number | null;
+  /** Attachment URLs (photos, files). */
+  attachments: string[];
 }
 
 /** Thread entry for any real conversation message, or null for system notes. Calls get a readable line. */
@@ -217,7 +223,15 @@ export function messageRecordFromApi(conv: GhlApiConversation, msg: GhlApiMessag
   }
 
   const at = toMillis(msg.dateAdded);
+  const duration = Number(msg.meta?.call?.duration);
+  const attachments = (Array.isArray(msg.attachments) ? msg.attachments : [])
+    .map((a: unknown) => (typeof a === "string" ? a : (a as { url?: string } | null)?.url ?? ""))
+    .filter((u: string) => /^https:\/\//.test(u))
+    .slice(0, 20);
   return {
+    callStatus: isCall ? callStatus.slice(0, 30) : "",
+    durationSeconds: isCall && Number.isFinite(duration) && duration > 0 ? Math.round(duration) : null,
+    attachments,
     id: msg.id,
     conversationId: (conv.id ?? "").trim(),
     direction,

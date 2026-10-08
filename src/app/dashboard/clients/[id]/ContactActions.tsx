@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import type { QueueAction } from "@/lib/validation/queue";
 import { queueAction } from "../../queue/actions";
+import { ResolveMenu } from "@/components/ResolveMenu";
 import { acknowledgeEscalation } from "../../escalations/actions";
 import { EscalateButton, type EscalationMember } from "../../escalations/EscalateButton";
 
@@ -108,14 +109,7 @@ export function ContactActions({
             ) : (
               <EscalateButton contactId={c.id} clientName={clientName} team={team} meId={meId} />
             )}
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => run({ action: "resolve", contactId: c.id })}
-              className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:border-zinc-400"
-            >
-              Resolve
-            </button>
+            <ResolveMenu disabled={busy} onResolve={(reason) => run({ action: "resolve", contactId: c.id, reason })} />
             </div>
           </div>
         );

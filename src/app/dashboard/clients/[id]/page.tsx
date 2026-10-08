@@ -4,7 +4,9 @@ import { getSessionMember } from "@/lib/auth";
 import { canSendMessages } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 import { ChatThread, type ChatMessage } from "./ChatThread";
+import { parseAttachments } from "@/lib/comms/channels";
 import { ClientDetails } from "./ClientDetails";
+import { ArchiveControls } from "./ArchiveControls";
 import { Composer } from "./Composer";
 import { ContactActions, type OpenContact } from "./ContactActions";
 
@@ -30,14 +32,18 @@ export default async function ClientThreadPage({ params, searchParams }: PagePro
 
   let threadQuery = supabase
     .from("messages")
-    .select("id, direction, channel, body, sent_by_user, occurred_at, conversation_id")
+    .select("id, direction, channel, body, sent_by_user, occurred_at, conversation_id, attachments")
     .eq("client_id", id)
     .order("occurred_at", { ascending: false })
     .limit(PAGE_SIZE + 1);
   if (before) threadQuery = threadQuery.lt("occurred_at", before);
 
   const [{ data: client }, { data: newest }, { count }, { data: open }, { data: team }] = await Promise.all([
-    supabase.from("clients").select("id, name, project, phone, email, owner_id, notes").eq("id", id).maybeSingle(),
+    supabase
+      .from("clients")
+      .select("id, name, project, phone, email, owner_id, notes, archived_at, archive_reason, archived_by")
+      .eq("id", id)
+      .maybeSingle(),
     threadQuery,
     supabase.from("messages").select("id", { count: "exact", head: true }).eq("client_id", id),
     supabase
@@ -60,6 +66,7 @@ export default async function ClientThreadPage({ params, searchParams }: PagePro
     body: m.body,
     sentByUser: m.sent_by_user,
     occurredAt: m.occurred_at,
+    attachments: parseAttachments(m.attachments),
   }));
   const total = count ?? messages.length;
   const olderHref = hasOlder ? `/dashboard/clients/${id}?before=${encodeURIComponent(rows[0].occurred_at)}` : undefined;
@@ -156,6 +163,15 @@ export default async function ClientThreadPage({ params, searchParams }: PagePro
             }}
             team={team ?? []}
             isAdmin={me?.role === "admin"}
+          />
+
+          <ArchiveControls
+            clientId={client.id}
+            clientName={client.name}
+            archivedReason={(client.archive_reason as "spam" | "archived" | null) ?? null}
+            archivedLabel={
+              client.archived_at ? `By ${nameOf(client.archived_by)} on ${new Date(client.archived_at).toLocaleDateString()}.` : ""
+            }
           />
 
           {openContacts.length > 0 ? (

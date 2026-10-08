@@ -14,6 +14,7 @@ const MAIN: Tab[] = [
   { href: "/dashboard/calls", label: "Call Log" },
   { href: "/dashboard/announcements", label: "Announcements" },
   { href: "/dashboard/reports", label: "Reports" },
+  { href: "/dashboard/archived", label: "Archived" },
   { href: "/dashboard/notifications", label: "Notifications" },
 ];
 

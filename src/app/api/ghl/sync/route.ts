@@ -73,7 +73,7 @@ async function run(req: Request): Promise<Response> {
   }
 
   const since = prev.cursor ? toMillis(prev.cursor) - OVERLAP_MS : startedAt.getTime() - FIRST_RUN_LOOKBACK_MS;
-  const counts = { conversations: 0, messages: 0, stored: 0, created: 0, appended: 0, responded: 0, duplicate: 0, skipped: 0, emailsFilled: 0 };
+  const counts = { conversations: 0, messages: 0, stored: 0, created: 0, appended: 0, responded: 0, duplicate: 0, archived: 0, skipped: 0, emailsFilled: 0 };
 
   try {
     const conversations = await searchConversations(token, locationId, MAX_CONVERSATIONS);

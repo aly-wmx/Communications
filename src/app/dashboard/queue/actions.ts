@@ -41,7 +41,7 @@ export async function queueAction(input: unknown): Promise<ActionResult> {
     next = markResponded(contact, me.memberId, now);
   } else if (action.action === "resolve") {
     if (contact.status === "Resolved") return { ok: true };
-    next = resolve(contact, me.memberId, now);
+    next = resolve(contact, me.memberId, now, action.reason ?? "");
   } else {
     if (contact.status !== "Resolved") return { ok: true };
     next = reopen(contact, me.memberId, now);

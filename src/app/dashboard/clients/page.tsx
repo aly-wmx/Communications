@@ -6,6 +6,7 @@ import { formatMinutes } from "@/lib/comms/sla";
 import { canSendMessages } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 import { NewConversation } from "./NewConversation";
+import { ChannelTag } from "@/components/ChannelTag";
 
 const PAGE_SIZE = 50;
 
@@ -33,6 +34,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/dashboar
     .from("client_overview")
     .select("*", { count: "exact" })
     .eq("business_id", current.id)
+    .is("archived_at", null)
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .order("name")
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
@@ -104,9 +106,12 @@ export default async function ClientsPage({ searchParams }: PageProps<"/dashboar
                   </td>
                   <td className="max-w-md px-3 py-2">
                     {c.last_body ? (
-                      <p className="truncate text-zinc-700">
-                        <span className="text-zinc-400">{c.last_direction === "outbound" ? "You: " : ""}</span>
-                        {c.last_body}
+                      <p className="flex items-center gap-1.5 truncate text-zinc-700">
+                        {c.last_channel && <ChannelTag channel={c.last_channel} />}
+                        <span className="truncate">
+                          <span className="text-zinc-400">{c.last_direction === "outbound" ? "You: " : ""}</span>
+                          {c.last_body}
+                        </span>
                       </p>
                     ) : (
                       <span className="text-zinc-400">—</span>

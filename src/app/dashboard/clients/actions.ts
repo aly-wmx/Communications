@@ -2,10 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { getSessionMember, requireAdmin } from "@/lib/auth";
-import { ghlConfig, GhlError, updateGhlContact } from "@/lib/comms/ghl-api";
+import { resolve } from "@/lib/comms/contacts";
+import { addGhlTags, ghlConfig, GhlError, removeGhlTags, updateGhlContact } from "@/lib/comms/ghl-api";
+import { contactFromRow, contactPatch } from "@/lib/comms/rows";
 import { toE164 } from "@/lib/comms/outbound";
 import { createClient } from "@/lib/supabase/server";
-import { clientUpdateSchema } from "@/lib/validation/clients";
+import { archiveSchema, clientUpdateSchema } from "@/lib/validation/clients";
 
 export type UpdateClientResult = { ok: true; warning?: string } | { ok: false; error: string };
 
@@ -77,5 +79,84 @@ export async function deleteClient(clientId: unknown): Promise<{ ok: true } | { 
   if (!data?.length) return { ok: false, error: "That client was already removed, or you don't have permission." };
 
   revalidatePath("/dashboard", "layout");
+  return { ok: true };
+}
+
+const SPAM_TAG = "spam";
+
+/**
+ * Move a client to the Archived folder (as spam, or just archived). Their open
+ * queue items are resolved, and new messages from them are kept on the thread
+ * without reopening the queue or alerting anyone. Spam also tags the contact in GHL.
+ */
+export async function archiveClient(input: unknown): Promise<UpdateClientResult> {
+  const me = await getSessionMember();
+  if (!me) return { ok: false, error: "You're not signed in as a team member." };
+  const parsed = archiveSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const { clientId, reason } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: client } = await supabase.from("clients").select("id, name, ghl_contact_id").eq("id", clientId).maybeSingle();
+  if (!client) return { ok: false, error: "That client no longer exists." };
+
+  const now = new Date();
+  const { error } = await supabase
+    .from("clients")
+    .update({ archived_at: now.toISOString(), archive_reason: reason, archived_by: me.memberId })
+    .eq("id", clientId);
+  if (error) return { ok: false, error: "Couldn't archive the client." };
+
+  const { data: open } = await supabase.from("contacts").select("*").eq("client_id", clientId).neq("status", "Resolved");
+  for (const row of open ?? []) {
+    const next = resolve(contactFromRow(row), me.memberId, now, reason === "spam" ? "Marked as spam" : "Archived");
+    await supabase.from("contacts").update(contactPatch(next)).eq("id", row.id);
+  }
+
+  revalidatePath("/dashboard", "layout");
+  if (reason === "spam" && client.ghl_contact_id) {
+    const { token, missing } = ghlConfig();
+    if (missing.length) return { ok: true, warning: "Archived as spam here; GoHighLevel isn't connected, so it wasn't tagged there." };
+    try {
+      await addGhlTags(token, client.ghl_contact_id, [SPAM_TAG]);
+    } catch (err) {
+      return { ok: true, warning: `Archived as spam here, but not tagged in GoHighLevel: ${err instanceof GhlError ? err.message : "no response"}` };
+    }
+  }
+  return { ok: true };
+}
+
+/** Bring a client back from the Archived folder (removes the GHL "spam" tag if it was spam). */
+export async function restoreClient(input: unknown): Promise<UpdateClientResult> {
+  const me = await getSessionMember();
+  if (!me) return { ok: false, error: "You're not signed in as a team member." };
+  const parsed = archiveSchema.pick({ clientId: true }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+
+  const supabase = await createClient();
+  const { data: client } = await supabase
+    .from("clients")
+    .select("id, ghl_contact_id, archive_reason")
+    .eq("id", parsed.data.clientId)
+    .maybeSingle();
+  if (!client) return { ok: false, error: "That client no longer exists." };
+
+  const { error } = await supabase
+    .from("clients")
+    .update({ archived_at: null, archive_reason: null, archived_by: "" })
+    .eq("id", client.id);
+  if (error) return { ok: false, error: "Couldn't restore the client." };
+  revalidatePath("/dashboard", "layout");
+
+  if (client.archive_reason === "spam" && client.ghl_contact_id) {
+    const { token, missing } = ghlConfig();
+    if (!missing.length) {
+      try {
+        await removeGhlTags(token, client.ghl_contact_id, [SPAM_TAG]);
+      } catch (err) {
+        return { ok: true, warning: `Restored here, but the GoHighLevel "spam" tag couldn't be removed: ${err instanceof GhlError ? err.message : "no response"}` };
+      }
+    }
+  }
   return { ok: true };
 }
