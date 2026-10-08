@@ -3,11 +3,17 @@ import { requireAdminPage } from "@/lib/auth";
 import { ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 import { TeamTable } from "./TeamTable";
+import { GhlUsers } from "./GhlUsers";
 
 export default async function TeamPage() {
   const me = await requireAdminPage();
   const supabase = await createClient();
-  const { data: members } = await supabase.from("team_members").select("*").order("name");
+  const [{ data: members }, { data: ghlUsers }, { data: usersState }] = await Promise.all([
+    supabase.from("team_members").select("*").order("name"),
+    supabase.from("ghl_users").select("id, name, email, phone").order("name"),
+    supabase.from("integration_state").select("value").eq("key", "ghl_users").maybeSingle(),
+  ]);
+  const ghlState = (usersState?.value ?? {}) as { refreshedAt?: string; error?: string };
 
   return (
     <div className="space-y-6">
@@ -17,6 +23,15 @@ export default async function TeamPage() {
       />
 
       <TeamTable members={members ?? []} meId={me.memberId} />
+
+      {(ghlUsers?.length ?? 0) > 0 && (
+        <GhlUsers
+          users={ghlUsers ?? []}
+          members={(members ?? []).map((m) => ({ id: m.id, name: m.name, ghl_user_id: m.ghl_user_id }))}
+          refreshedAt={ghlState.refreshedAt ?? ""}
+          error={ghlState.error ?? ""}
+        />
+      )}
 
       <div className="grid max-w-4xl gap-3 sm:grid-cols-3">
         {ROLES.map((r) => (

@@ -253,6 +253,8 @@ async function handleInbound(sb: Db, e: GhlEvent, client: ClientRow) {
 /** The teammate behind a GHL user (matched by email), so replies sent in GHL are credited to them. */
 async function teammateForGhlUser(sb: Db, ghlUserId: string): Promise<{ id: string; name: string } | null> {
   if (!ghlUserId) return null;
+  const { data: linked } = await sb.from("team_members").select("id, name").eq("ghl_user_id", ghlUserId).maybeSingle();
+  if (linked) return linked;
   const { data: user } = await sb.from("ghl_users").select("email, name").eq("id", ghlUserId).maybeSingle();
   if (!user?.email) return null;
   const { data: members } = await sb.from("team_members").select("id, name, email");

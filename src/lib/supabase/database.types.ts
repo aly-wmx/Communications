@@ -181,9 +181,9 @@ export type Database = {
         ];
       };
       ghl_users: {
-        Row: { email: string; id: string; name: string; updated_at: string };
-        Insert: { email?: string; id: string; name?: string; updated_at?: string };
-        Update: { email?: string; id?: string; name?: string; updated_at?: string };
+        Row: { email: string; id: string; name: string; phone: string; updated_at: string };
+        Insert: { email?: string; id: string; name?: string; phone?: string; updated_at?: string };
+        Update: { email?: string; id?: string; name?: string; phone?: string; updated_at?: string };
         Relationships: [];
       };
       ghl_messages: {
@@ -350,6 +350,7 @@ export type Database = {
           email: string;
           escalation: boolean;
           ghl_contact_id: string | null;
+          ghl_user_id: string | null;
           id: string;
           name: string;
           phone: string;
@@ -362,6 +363,7 @@ export type Database = {
           email?: string;
           escalation?: boolean;
           ghl_contact_id?: string | null;
+          ghl_user_id?: string | null;
           id: string;
           name: string;
           phone?: string;
@@ -374,6 +376,7 @@ export type Database = {
           email?: string;
           escalation?: boolean;
           ghl_contact_id?: string | null;
+          ghl_user_id?: string | null;
           id?: string;
           name?: string;
           phone?: string;

@@ -276,7 +276,7 @@ export const addGhlTags = (token: string, contactId: string, tags: string[]) => 
 export const removeGhlTags = (token: string, contactId: string, tags: string[]) => contactTags(token, contactId, tags, "DELETE");
 
 /** The location's GoHighLevel users (for "Reid · via GoHighLevel" labels). Needs the users.readonly scope. */
-export async function listGhlUsers(token: string, locationId: string): Promise<Array<{ id: string; name: string; email: string }>> {
+export async function listGhlUsers(token: string, locationId: string): Promise<Array<{ id: string; name: string; email: string; phone: string }>> {
   const res = await fetch(`${GHL}/users/?locationId=${encodeURIComponent(locationId)}`, {
     headers: { Authorization: `Bearer ${token}`, Version: "2021-07-28", Accept: "application/json" },
     cache: "no-store",
@@ -284,12 +284,15 @@ export async function listGhlUsers(token: string, locationId: string): Promise<A
   if (!res.ok) {
     throw new GhlError(res.status, res.status === 401 || res.status === 403 ? "Add the users.readonly scope to show who sent replies from GoHighLevel." : `GHL users: ${res.status}`);
   }
-  const body = (await res.json()) as { users?: Array<{ id?: string; name?: string; firstName?: string; lastName?: string; email?: string }> };
+  const body = (await res.json()) as {
+    users?: Array<{ id?: string; name?: string; firstName?: string; lastName?: string; email?: string; phone?: string }>;
+  };
   return (body.users ?? [])
     .filter((u) => u.id)
     .map((u) => ({
       id: u.id!,
       name: (u.name || [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email || "GHL user").trim(),
       email: (u.email ?? "").trim().toLowerCase(),
+      phone: (u.phone ?? "").trim().slice(0, 40),
     }));
 }

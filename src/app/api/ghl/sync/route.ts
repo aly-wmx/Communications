@@ -108,6 +108,14 @@ async function run(req: Request): Promise<Response> {
       try {
         const users = await listGhlUsers(token, locationId);
         if (users.length) await sb.from("ghl_users").upsert(users.map((u) => ({ ...u, updated_at: startedAt.toISOString() })));
+        // Linked teammates: fill in a missing phone or email from GHL (never overwrite what's set — emails are sign-ins).
+        const { data: linked } = await sb.from("team_members").select("id, email, phone, ghl_user_id").not("ghl_user_id", "is", null);
+        for (const t of linked ?? []) {
+          const u = users.find((x) => x.id === t.ghl_user_id);
+          if (!u) continue;
+          const patch = { ...(!t.phone && u.phone ? { phone: u.phone } : {}), ...(!t.email && u.email ? { email: u.email } : {}) };
+          if (Object.keys(patch).length) await sb.from("team_members").update(patch).eq("id", t.id);
+        }
         await sb.from("integration_state").upsert({ key: "ghl_users", value: { refreshedAt: startedAt.toISOString(), count: users.length } as unknown as Json });
       } catch (err) {
         await sb.from("integration_state").upsert({

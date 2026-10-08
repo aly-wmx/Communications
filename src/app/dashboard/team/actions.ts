@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
@@ -116,4 +117,88 @@ export async function inviteMember(input: unknown): Promise<ActionResult> {
     return { ok: false, error: `Couldn't send the invite: ${error.message}` };
   }
   return { ok: true };
+}
+
+const ghlUserIdSchema = z.string().min(1).max(60);
+
+/** Add a GoHighLevel user to the portal team (gives them sign-in access). */
+export async function addFromGhl(input: unknown): Promise<ActionResult> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+  const parsed = z
+    .object({ ghlUserId: ghlUserIdSchema, role: z.enum(["admin", "manager", "coordinator"]), department: z.enum(["", "sales", "design", "construction", "client_care"]) })
+    .safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const { ghlUserId, role, department } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: u } = await supabase.from("ghl_users").select("id, name, email, phone").eq("id", ghlUserId).maybeSingle();
+  if (!u) return { ok: false, error: "That GoHighLevel user wasn't found — wait for the next sync." };
+  const { error } = await supabase.from("team_members").insert({
+    id: `tm_${randomUUID()}`,
+    name: u.name || u.email || "New teammate",
+    email: u.email,
+    phone: u.phone,
+    role,
+    department,
+    ghl_user_id: u.id,
+  });
+  if (error) return { ok: false, error: explain(error.message, error.message.includes("ghl_user") ? "That GHL user is already linked to a teammate." : "Couldn't add them.") };
+  revalidatePath("/dashboard/team");
+  return { ok: true };
+}
+
+/** Link (or unlink with "") a portal teammate to a GoHighLevel user, and copy over any missing phone. */
+export async function linkGhlUser(input: unknown): Promise<ActionResult> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+  const parsed = z.object({ memberId: z.string().min(1).max(100), ghlUserId: z.string().max(60) }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const { memberId, ghlUserId } = parsed.data;
+
+  const supabase = await createClient();
+  if (!ghlUserId) {
+    await supabase.from("team_members").update({ ghl_user_id: null }).eq("id", memberId);
+    revalidatePath("/dashboard/team");
+    return { ok: true };
+  }
+  const [{ data: u }, { data: m }] = await Promise.all([
+    supabase.from("ghl_users").select("phone").eq("id", ghlUserId).maybeSingle(),
+    supabase.from("team_members").select("phone").eq("id", memberId).maybeSingle(),
+  ]);
+  if (!u || !m) return { ok: false, error: "Not found." };
+  const { error } = await supabase
+    .from("team_members")
+    .update({ ghl_user_id: ghlUserId, ...(!m.phone && u.phone ? { phone: u.phone } : {}) })
+    .eq("id", memberId);
+  if (error) return { ok: false, error: "That GHL user is already linked to someone else." };
+  revalidatePath("/dashboard/team");
+  return { ok: true };
+}
+
+/** Copy name and phone from GoHighLevel onto every linked teammate (emails are left alone — they're sign-ins). */
+export async function syncLinkedFromGhl(): Promise<ActionResult & { updated?: number }> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+  const supabase = await createClient();
+  const [{ data: members }, { data: users }] = await Promise.all([
+    supabase.from("team_members").select("id, name, phone, email, ghl_user_id").not("ghl_user_id", "is", null),
+    supabase.from("ghl_users").select("id, name, phone, email"),
+  ]);
+  let updated = 0;
+  for (const m of members ?? []) {
+    const u = (users ?? []).find((x) => x.id === m.ghl_user_id);
+    if (!u) continue;
+    const patch = {
+      ...(u.name && u.name !== m.name ? { name: u.name } : {}),
+      ...(u.phone && u.phone !== m.phone ? { phone: u.phone } : {}),
+      ...(!m.email && u.email ? { email: u.email } : {}),
+    };
+    if (Object.keys(patch).length) {
+      await supabase.from("team_members").update(patch).eq("id", m.id);
+      updated++;
+    }
+  }
+  revalidatePath("/dashboard", "layout");
+  return { ok: true, updated };
 }
