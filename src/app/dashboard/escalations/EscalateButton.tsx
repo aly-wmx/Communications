@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { escalateContact } from "./actions";
 
 export interface EscalationMember {
@@ -9,7 +9,10 @@ export interface EscalationMember {
   escalation: boolean;
 }
 
-/** "Escalate" with a short note; managers who receive escalations are ticked by default. */
+/**
+ * "Escalate" with a short note; managers who receive escalations are ticked by default.
+ * With `hideTrigger` it renders only the dialog, opened on mount (used when a card is dragged onto "Awaiting pickup").
+ */
 export function EscalateButton({
   contactId,
   clientName,
@@ -17,6 +20,8 @@ export function EscalateButton({
   meId,
   className = "",
   highlight = false,
+  hideTrigger = false,
+  onClose,
 }: {
   contactId: string;
   clientName: string;
@@ -24,6 +29,8 @@ export function EscalateButton({
   meId: string;
   className?: string;
   highlight?: boolean;
+  hideTrigger?: boolean;
+  onClose?: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const defaults = team.filter((t) => t.escalation && t.id !== meId).map((t) => t.id);
@@ -31,6 +38,10 @@ export function EscalateButton({
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (hideTrigger) dialog.current?.showModal();
+  }, [hideTrigger]);
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -46,6 +57,7 @@ export function EscalateButton({
 
   return (
     <>
+      {!hideTrigger && (
       <button
         type="button"
         onClick={() => {
@@ -62,8 +74,13 @@ export function EscalateButton({
       >
         Escalate
       </button>
+      )}
       <dialog
         ref={dialog}
+        onClose={() => {
+          setError(null);
+          onClose?.();
+        }}
         aria-label={`Escalate ${clientName}`}
         className="m-auto w-[min(26rem,calc(100vw-2rem))] rounded-xl border border-zinc-200 p-0 shadow-xl backdrop:bg-black/40"
       >

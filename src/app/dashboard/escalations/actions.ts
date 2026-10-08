@@ -40,7 +40,7 @@ export async function escalateContact(input: unknown): Promise<ActionResult> {
 
   const loaded = await loadForAction(parsed.data.contactId);
   if (!loaded) return { ok: false, error: "That contact no longer exists." };
-  const { supabase, contactRow, contact, clientName, sla } = loaded;
+  const { contactRow, contact, clientName, sla } = loaded;
   if (contact.status === "Resolved") return { ok: false, error: "That contact is already resolved." };
 
   const sb = serviceDb();
@@ -55,7 +55,8 @@ export async function escalateContact(input: unknown): Promise<ActionResult> {
   if (!planned.length) return { ok: false, error: "Nobody to notify — tick “Escalations” for someone on the Team page." };
 
   const next = escalate(contact, me.memberId, planned.map((p) => p.recipientId), parsed.data.note, team, now, "manual");
-  const { data: updated, error } = await supabase
+  // Read with their access above; escalations themselves are written by the server.
+  const { data: updated, error } = await sb
     .from("contacts")
     .update(contactPatch(next))
     .eq("id", contact.id)
@@ -78,7 +79,7 @@ export async function acknowledgeEscalation(input: unknown): Promise<ActionResul
 
   const loaded = await loadForAction(parsed.data.contactId);
   if (!loaded) return { ok: false, error: "That contact no longer exists." };
-  const { supabase, contactRow, contact, clientName, sla } = loaded;
+  const { contactRow, contact, clientName, sla } = loaded;
 
   const sb = serviceDb();
   const team = await loadTeam(sb);
@@ -87,7 +88,7 @@ export async function acknowledgeEscalation(input: unknown): Promise<ActionResul
   if (!pending) return { ok: false, error: "Someone already picked this up." };
 
   const next = acknowledge(contact, me.memberId, team, now);
-  const { data: updated } = await supabase
+  const { data: updated } = await sb
     .from("contacts")
     .update(contactPatch(next))
     .eq("id", contact.id)
@@ -97,7 +98,7 @@ export async function acknowledgeEscalation(input: unknown): Promise<ActionResul
 
   // Assign it to whoever picked it up, and tell the others to stand down.
   if (contact.assigneeId !== me.memberId) {
-    await supabase.from("contacts").update({ assignee_id: me.memberId }).eq("id", contact.id);
+    await sb.from("contacts").update({ assignee_id: me.memberId }).eq("id", contact.id);
   }
   const planned = planPickedUp(planContext(contact, clientName, sla, now), planTeam(team), {
     byId: me.memberId,
