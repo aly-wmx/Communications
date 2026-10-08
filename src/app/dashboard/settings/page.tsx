@@ -4,12 +4,13 @@ import { slaFromJson } from "@/lib/comms/rows";
 import { createClient } from "@/lib/supabase/server";
 import { SlaForm } from "./SlaForm";
 import { SignInAccess } from "./SignInAccess";
+import { SlackChannel } from "./SlackChannel";
 
 export default async function SettingsPage() {
   await requireAdminPage();
   const supabase = await createClient();
   const [{ data: settings }, { data: team }, { data: sync }] = await Promise.all([
-    supabase.from("settings").select("sla, allowed_domains, blocked_emails").eq("id", 1).maybeSingle(),
+    supabase.from("settings").select("sla, allowed_domains, blocked_emails, slack_channel_id, slack_channel_events").eq("id", 1).maybeSingle(),
     supabase.from("team_members").select("id, name, escalation").order("name"),
     supabase.from("integration_state").select("value").eq("key", "ghl_sync").maybeSingle(),
   ]);
@@ -19,6 +20,11 @@ export default async function SettingsPage() {
     <div className="space-y-6">
       <PageHeader title="Settings" description="Response-time targets, business hours, and connections to other tools." />
       <SlaForm initial={slaFromJson(settings?.sla)} team={team ?? []} />
+      <SlackChannel
+        channelId={settings?.slack_channel_id ?? ""}
+        events={settings?.slack_channel_events ?? []}
+        connected={Boolean(process.env.SLACK_BOT_TOKEN)}
+      />
       <SignInAccess domains={settings?.allowed_domains ?? []} blocked={settings?.blocked_emails ?? []} />
 
       <section className="max-w-3xl space-y-3 rounded-lg border border-zinc-200 bg-white p-5">

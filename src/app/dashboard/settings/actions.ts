@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/database.types";
 import { slaSettingsSchema } from "@/lib/validation/settings";
 import { normaliseDomain } from "@/lib/signin-domains";
+import { serviceDb } from "@/lib/comms/ghl-store";
+import { dispatchPending } from "@/lib/comms/notify-store";
 
 export async function saveSla(input: unknown): Promise<ActionResult> {
   const denied = await requireAdmin();
@@ -55,4 +57,41 @@ export async function saveSignInAccess(input: unknown): Promise<ActionResult> {
   if (error) return { ok: false, error: "Couldn't save sign-in access." };
   revalidatePath("/dashboard/settings");
   return { ok: true };
+}
+
+const EVENTS = ["escalation", "picked_up", "mention", "reminder", "new_message"];
+
+/** Team Slack channel for escalations, pick-ups and mentions, and which events go there. */
+export async function saveSlackChannel(input: unknown): Promise<ActionResult> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+  const v = input as { channelId?: unknown; events?: unknown };
+  const channelId = typeof v?.channelId === "string" ? v.channelId.trim().toUpperCase() : "";
+  if (channelId && !/^[CG][A-Z0-9]{8,}$/.test(channelId)) return { ok: false, error: "Slack channel IDs look like C0C7KR2UH9U (channel details → bottom of the About tab)." };
+  const events = Array.isArray(v?.events) ? v.events.filter((e): e is string => typeof e === "string" && EVENTS.includes(e)) : [];
+  const supabase = await createClient();
+  const { error } = await supabase.from("settings").update({ slack_channel_id: channelId, slack_channel_events: [...new Set(events)] }).eq("id", 1);
+  if (error) return { ok: false, error: "Couldn't save the Slack channel." };
+  revalidatePath("/dashboard/settings");
+  return { ok: true };
+}
+
+/** Post a test message to the team channel right now. */
+export async function testSlackChannel(): Promise<ActionResult> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+  if (!process.env.SLACK_BOT_TOKEN) return { ok: false, error: "Add SLACK_BOT_TOKEN in Vercel first." };
+  const sb = serviceDb();
+  const { data: settings } = await sb.from("settings").select("slack_channel_id").eq("id", 1).maybeSingle();
+  if (!settings?.slack_channel_id) return { ok: false, error: "Save a channel ID first." };
+  const { data: post, error } = await sb
+    .from("slack_channel_posts")
+    .insert({ kind: "mention", title: "Test from the Client Communications portal", body: "Escalations, pick-ups and mentions will appear in this channel.", link: "/dashboard" })
+    .select("id")
+    .single();
+  if (error || !post) return { ok: false, error: "Couldn't queue the test." };
+  await dispatchPending(sb, 1);
+  const { data: result } = await sb.from("slack_channel_posts").select("status, error").eq("id", post.id).single();
+  if (result?.status === "sent") return { ok: true };
+  return { ok: false, error: result?.error || "Slack didn't accept the message." };
 }

@@ -74,7 +74,43 @@ export async function saveNotifications(
     })),
   );
   if (error) throw error;
+  await queueChannelPosts(sb, planned, link);
   return planned.length;
+}
+
+export const CHANNEL_EVENTS = ["escalation", "picked_up", "mention", "reminder", "new_message"] as const;
+
+/**
+ * The team channel gets one post per event (e.g. one escalation post tagging
+ * everyone notified), for the kinds chosen in Settings.
+ */
+async function queueChannelPosts(sb: Db, planned: PlannedNotification[], link: string) {
+  const { data: settings } = await sb.from("settings").select("slack_channel_id, slack_channel_events").eq("id", 1).maybeSingle();
+  if (!settings?.slack_channel_id) return;
+  const groups = new Map<string, { kind: string; title: string; body: string; urgent: boolean; ids: string[] }>();
+  for (const p of planned) {
+    if (!settings.slack_channel_events.includes(p.kind)) continue;
+    // Mentions are personal ("X mentioned you…"), so the channel post names everyone instead.
+    const key = `${p.kind}|${p.kind === "mention" ? p.body : p.title}|${p.body}`;
+    const g = groups.get(key) ?? { kind: p.kind, title: p.title, body: p.body, urgent: p.urgent, ids: [] };
+    g.ids.push(p.recipientId);
+    groups.set(key, g);
+  }
+  if (!groups.size) return;
+  await sb.from("slack_channel_posts").insert(
+    [...groups.values()].map((g) => ({
+      kind: g.kind,
+      // "Aly mentioned you on X" → "Aly mentioned teammates on X"; "Aly needs you to reply to X" → "Aly asked for a reply to X".
+      title:
+        g.kind === "mention"
+          ? g.title.replace(/ mentioned you /, " mentioned teammates ").replace(/ needs you to reply to /, " asked for a reply to ")
+          : g.title,
+      body: g.body,
+      link,
+      urgent: g.urgent,
+      mention_member_ids: g.ids,
+    })),
+  );
 }
 
 // ---------- The every-minute engine: reminders and automatic escalation ----------
@@ -200,16 +236,53 @@ async function sendEmail(sb: Db, member: TeamRow, n: { title: string; body: stri
   });
 }
 
-export async function dispatchPending(sb: Db, limit = 25): Promise<{ slack: number; email: number; failed: number }> {
+/** Post queued channel messages to the team Slack channel, tagging the people involved. */
+async function dispatchChannel(sb: Db, team: TeamRow[]): Promise<number> {
+  const token = process.env.SLACK_BOT_TOKEN ?? "";
+  const { data: settings } = await sb.from("settings").select("slack_channel_id").eq("id", 1).maybeSingle();
+  const { data: posts } = await sb.from("slack_channel_posts").select("*").eq("status", "pending").order("created_at").limit(15);
+  if (!posts?.length) return 0;
+  if (!token || !settings?.slack_channel_id) {
+    await sb.from("slack_channel_posts").update({ status: "skipped", error: token ? "No channel set" : "Slack isn't connected" }).in("id", posts.map((p) => p.id));
+    return 0;
+  }
+  let sent = 0;
+  for (const p of posts) {
+    const tags = p.mention_member_ids
+      .map((id) => team.find((t) => t.id === id))
+      .filter((t): t is TeamRow => Boolean(t))
+      .map((t) => (t.slack_user_id ? `<@${t.slack_user_id}>` : t.name));
+    try {
+      await sendSlack(token, settings.slack_channel_id, {
+        title: p.title,
+        body: [p.body, tags.length ? `For: ${tags.join(" ")}` : ""].filter(Boolean).join("\n"),
+        link: p.link,
+        urgent: p.urgent,
+      });
+      await sb.from("slack_channel_posts").update({ status: "sent", attempts: p.attempts + 1 }).eq("id", p.id);
+      sent++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Slack failed";
+      const hint = /not_in_channel|channel_not_found/.test(msg) ? `${msg} — invite the app to the channel (/invite @WMX Portal)` : msg;
+      await sb
+        .from("slack_channel_posts")
+        .update({ attempts: p.attempts + 1, error: hint.slice(0, 300), ...(p.attempts + 1 >= MAX_ATTEMPTS ? { status: "failed" } : {}) })
+        .eq("id", p.id);
+    }
+  }
+  return sent;
+}
+
+export async function dispatchPending(sb: Db, limit = 25): Promise<{ slack: number; email: number; failed: number; channel?: number }> {
   const { data: pending } = await sb
     .from("notifications")
     .select("*")
     .or("slack_status.eq.pending,email_status.eq.pending")
     .order("created_at")
     .limit(limit);
-  if (!pending?.length) return { slack: 0, email: 0, failed: 0 };
-
   const [team, { data: prefRows }] = await Promise.all([loadTeam(sb), sb.from("notification_prefs").select("*")]);
+  const channel = await dispatchChannel(sb, team);
+  if (!pending?.length) return { slack: 0, email: 0, failed: 0, channel };
   const prefsFor = (id: string): Prefs => ({ ...DEFAULT_PREFS, ...(prefRows ?? []).find((p) => p.member_id === id) });
   const slackToken = process.env.SLACK_BOT_TOKEN ?? "";
   const counts = { slack: 0, email: 0, failed: 0 };
@@ -256,5 +329,5 @@ export async function dispatchPending(sb: Db, limit = 25): Promise<{ slack: numb
     }
     await sb.from("notifications").update(patch).eq("id", n.id);
   }
-  return counts;
+  return { ...counts, channel };
 }

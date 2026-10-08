@@ -332,9 +332,15 @@ export type Database = {
         Relationships: [];
       };
       settings: {
-        Row: { allowed_domains: string[]; blocked_emails: string[]; id: number; sla: Json; updated_at: string };
-        Insert: { allowed_domains?: string[]; blocked_emails?: string[]; id?: number; sla: Json; updated_at?: string };
-        Update: { allowed_domains?: string[]; blocked_emails?: string[]; id?: number; sla?: Json; updated_at?: string };
+        Row: { allowed_domains: string[]; blocked_emails: string[]; id: number; sla: Json; slack_channel_events: string[]; slack_channel_id: string; updated_at: string };
+        Insert: { allowed_domains?: string[]; blocked_emails?: string[]; id?: number; sla: Json; slack_channel_events?: string[]; slack_channel_id?: string; updated_at?: string };
+        Update: { allowed_domains?: string[]; blocked_emails?: string[]; id?: number; sla?: Json; slack_channel_events?: string[]; slack_channel_id?: string; updated_at?: string };
+        Relationships: [];
+      };
+      slack_channel_posts: {
+        Row: { attempts: number; body: string; created_at: string; error: string; id: string; kind: string; link: string; mention_member_ids: string[]; status: string; title: string; urgent: boolean };
+        Insert: { attempts?: number; body?: string; created_at?: string; error?: string; id?: string; kind: string; link?: string; mention_member_ids?: string[]; status?: string; title: string; urgent?: boolean };
+        Update: { attempts?: number; body?: string; created_at?: string; error?: string; id?: string; kind?: string; link?: string; mention_member_ids?: string[]; status?: string; title?: string; urgent?: boolean };
         Relationships: [];
       };
       team_notes: {
