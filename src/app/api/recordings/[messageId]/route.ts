@@ -3,7 +3,7 @@ import { ghlConfig } from "@/lib/comms/ghl-api";
 import { cronSecretOk } from "@/lib/comms/ghl-store";
 import { createClient } from "@/lib/supabase/server";
 import { playableWav } from "@/lib/comms/wav";
-import { audioType as contentType, serveAudio as serve } from "@/lib/comms/audio-response";
+import { audioType as contentType, fetchTrustedAudio, serveAudio as serve } from "@/lib/comms/audio-response";
 
 /**
  * Streams a voicemail or call recording from GoHighLevel to the portal's audio player.
@@ -131,15 +131,12 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/recordings/[
   // 2) An audio attachment on the message (typical for voicemails).
   const details = await messageDetails(token, messageId);
   for (const url of details ? audioUrls(details) : []) {
-    // Links on GHL's own storage are usually public; try with and without the API key.
-    for (const headers of [undefined, ghlHeaders(token)]) {
-      const res = await fetch(url, { headers, cache: "no-store" });
-      if (res.ok && isAudio(res)) {
-        const out = await playable(res, range);
-        if (out) return out;
-      } else {
-        void res.body?.cancel();
-      }
+    const res = await fetchTrustedAudio(url);
+    if (res?.ok && isAudio(res)) {
+      const out = await playable(res, range);
+      if (out) return out;
+    } else {
+      void res?.body?.cancel();
     }
   }
 

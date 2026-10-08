@@ -10,9 +10,14 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   admin: "Everything, including Team, Businesses and Settings.",
   manager: "Everything except Team, Businesses and Settings. Receives escalations.",
-  coordinator: "Queue, clients, call log and announcements. Can escalate.",
+  coordinator: "Queue, clients, call log and announcements. Can reply to clients and escalate.",
 };
 
 export function isRole(value: string): value is Role {
   return (ROLES as readonly string[]).includes(value);
+}
+
+/** Everyone on the team can message clients (coordinators answer most of them). */
+export function canSendMessages(role: Role): boolean {
+  return isRole(role);
 }

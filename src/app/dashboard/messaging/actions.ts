@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSessionMember, type SessionMember } from "@/lib/auth";
+import { canSendMessages } from "@/lib/roles";
 import { getBusinessContext } from "@/lib/business";
 import { markResponded } from "@/lib/comms/contacts";
 import { ghlConfig, GhlError, sendGhlMessage, upsertGhlContact } from "@/lib/comms/ghl-api";
@@ -103,6 +104,7 @@ function failure(err: unknown): { ok: false; error: string } {
 export async function sendReply(input: unknown): Promise<SendResult> {
   const me = await getSessionMember();
   if (!me) return { ok: false, error: "You're not signed in as a team member." };
+  if (!canSendMessages(me.role)) return { ok: false, error: "Your role can't send messages." };
   const parsed = replySchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid message." };
   const { clientId, ...msg } = parsed.data;
@@ -125,6 +127,7 @@ export async function sendReply(input: unknown): Promise<SendResult> {
 export async function startConversation(input: unknown): Promise<SendResult> {
   const me = await getSessionMember();
   if (!me) return { ok: false, error: "You're not signed in as a team member." };
+  if (!canSendMessages(me.role)) return { ok: false, error: "Your role can't send messages." };
   const parsed = newConversationSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the form." };
   const v = parsed.data;
@@ -174,7 +177,7 @@ export async function searchClients(query: string): Promise<ClientPick[]> {
   const me = await getSessionMember();
   // Quotes, commas and brackets would break the filter syntax; they never matter for a name/phone search.
   const q = typeof query === "string" ? query.replace(/[",()]/g, " ").trim().slice(0, 80) : "";
-  if (!me || q.length < 2) return [];
+  if (!me || !canSendMessages(me.role) || q.length < 2) return [];
   const { current } = await getBusinessContext();
   if (!current) return [];
 

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
+import { getSessionMember } from "@/lib/auth";
 import { getBusinessContext } from "@/lib/business";
 import { formatMinutes } from "@/lib/comms/sla";
+import { canSendMessages } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 import { NewConversation } from "./NewConversation";
 
@@ -17,6 +19,7 @@ const likeSafe = (v: string) => v.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 export default async function ClientsPage({ searchParams }: PageProps<"/dashboard/clients">) {
   const params = await searchParams;
+  const me = await getSessionMember();
   // Quotes, commas and brackets would break the filter syntax; they never matter for a client search.
   const q = typeof params.q === "string" ? params.q.replace(/[",()]/g, " ").trim().slice(0, 80) : "";
   const page = Math.max(1, Number(typeof params.page === "string" ? params.page : 1) || 1);
@@ -52,7 +55,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/dashboar
         title="Clients"
         description="Every client and their full conversation history from GoHighLevel. Open a client to read and reply."
       >
-        <NewConversation />
+        {me && canSendMessages(me.role) && <NewConversation />}
       </PageHeader>
 
       <form className="flex flex-wrap items-center gap-2">

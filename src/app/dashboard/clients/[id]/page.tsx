@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionMember } from "@/lib/auth";
+import { canSendMessages } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 import { ChatThread, type ChatMessage } from "./ChatThread";
 import { ClientDetails } from "./ClientDetails";
@@ -136,7 +137,9 @@ export default async function ClientThreadPage({ params, searchParams }: PagePro
 
           <ChatThread messages={messages} clientName={client.name} olderHref={olderHref} newerHref={newerHref} />
 
-          <Composer clientId={client.id} hasPhone={Boolean(client.phone)} hasEmail={Boolean(client.email)} />
+          {me && canSendMessages(me.role) && (
+            <Composer clientId={client.id} hasPhone={Boolean(client.phone)} hasEmail={Boolean(client.email)} />
+          )}
         </section>
 
         {/* Side panel */}
