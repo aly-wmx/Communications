@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { REMEMBER_COOKIE, sessionOnly, wantsRemember } from "@/lib/supabase/remember";
 
 // Next.js 16 renamed middleware.ts to proxy.ts (same behavior, new name —
 // see AGENTS.md). This runs on every request to keep the Supabase session
@@ -23,8 +24,9 @@ export async function proxy(request: NextRequest) {
             request.cookies.set(name, value),
           );
           response = NextResponse.next({ request });
+          const remember = wantsRemember(request.cookies.get(REMEMBER_COOKIE)?.value);
           cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
+            response.cookies.set(name, value, sessionOnly(options, remember)),
           );
         },
       },

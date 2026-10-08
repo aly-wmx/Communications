@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useActionState } from "react";
+import { Suspense, useActionState, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ const initialState: LoginResult = { error: null };
 
 function LoginForm() {
   const [state, formAction, pending] = useActionState(signIn, initialState);
+  const [remember, setRemember] = useState(true);
   const searchParams = useSearchParams();
   const reason = searchParams.get("reason");
 
@@ -39,7 +40,7 @@ function LoginForm() {
         </p>
       )}
 
-      <GoogleButton />
+      <GoogleButton remember={remember} />
       <div className="flex items-center gap-3 text-xs text-zinc-400">
         <span className="h-px flex-1 bg-zinc-200" />
         or
@@ -67,6 +68,18 @@ function LoginForm() {
         </div>
         <Input id="password" name="password" type="password" required autoComplete="current-password" />
       </div>
+
+      <label className="flex items-center gap-2 text-sm text-zinc-700">
+        <input
+          type="checkbox"
+          name="remember"
+          checked={remember}
+          onChange={(e) => setRemember(e.target.checked)}
+          className="size-4 accent-[#1C2B47]"
+        />
+        Stay signed in
+        <span className="text-xs text-zinc-400">— untick on shared computers</span>
+      </label>
 
       {state.error && (
         <p className="text-sm text-red-600" role="alert">

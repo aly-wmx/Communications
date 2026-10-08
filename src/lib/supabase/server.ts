@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { Database } from "./database.types";
+import { REMEMBER_COOKIE, sessionOnly, wantsRemember } from "./remember";
 
 // One per request — Server Components read cookies, Server Actions/Route
 // Handlers can also write them. Writes from a Server Component are caught
@@ -19,8 +20,10 @@ export async function createClient() {
         },
         setAll(cookiesToSet) {
           try {
+            // "Stay signed in" off: sign-in cookies end when the browser closes.
+            const remember = wantsRemember(cookieStore.get(REMEMBER_COOKIE)?.value);
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options),
+              cookieStore.set(name, value, sessionOnly(options, remember)),
             );
           } catch {
             // Called from a Server Component render, where cookies can't be

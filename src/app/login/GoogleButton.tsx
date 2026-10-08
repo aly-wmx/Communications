@@ -1,15 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, setRememberChoice } from "@/lib/supabase/client";
 
-export function GoogleButton() {
+export function GoogleButton({ remember }: { remember: boolean }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleClick() {
     setPending(true);
     setError(null);
+    // Saved before leaving for Google, so the sign-in cookies set on return follow it.
+    setRememberChoice(remember);
     const supabase = createClient();
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: "google",
