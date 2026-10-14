@@ -6,8 +6,8 @@ import { getSessionMember, type SessionMember } from "@/lib/auth";
 import { canSendMessages } from "@/lib/roles";
 import { getBusinessContext } from "@/lib/business";
 import { markResponded } from "@/lib/comms/contacts";
-import { ghlConfig, GhlError, sendGhlMessage, upsertGhlContact } from "@/lib/comms/ghl-api";
-import { ensureClient, serviceDb, type Db } from "@/lib/comms/ghl-store";
+import { GhlError, sendGhlMessage, upsertGhlContact } from "@/lib/comms/ghl-api";
+import { ensureClient, readyGhlAccount, serviceDb, type Db } from "@/lib/comms/ghl-store";
 import { textToHtml, toE164 } from "@/lib/comms/outbound";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/database.types";
@@ -22,6 +22,7 @@ interface ClientForSend {
   phone: string;
   email: string;
   ghl_contact_id: string | null;
+  business_id: string;
 }
 
 /** Make sure the client exists as a GHL contact, creating it if needed, and remember the id. */
@@ -45,8 +46,8 @@ async function sendAndRecord(
   client: ClientForSend,
   input: { channel: "SMS" | "Email"; subject?: string; message: string },
 ): Promise<void> {
-  const { token, locationId, missing } = ghlConfig();
-  if (missing.length) throw new GhlError(500, `Sending needs ${missing.join(" and ")} in Vercel.`);
+  // The client's own business's GHL sub-account.
+  const { token, locationId } = await readyGhlAccount(sb, client.business_id);
 
   if (input.channel === "SMS" && !toE164(client.phone) && !client.ghl_contact_id) {
     throw new GhlError(400, "This client has no valid phone number for texts.");
@@ -141,7 +142,7 @@ export async function sendReply(input: unknown): Promise<SendResult> {
   const supabase = await createClient();
   const { data: client } = await supabase
     .from("clients")
-    .select("id, name, phone, email, ghl_contact_id, archive_reason")
+    .select("id, name, phone, email, ghl_contact_id, business_id, archive_reason")
     .eq("id", clientId)
     .maybeSingle();
   if (!client) return { ok: false, error: "That client no longer exists." };
@@ -180,7 +181,7 @@ export async function startConversation(input: unknown): Promise<SendResult> {
     if (v.mode === "existing") {
       const { data } = await supabase
         .from("clients")
-        .select("id, name, phone, email, ghl_contact_id, archive_reason")
+        .select("id, name, phone, email, ghl_contact_id, business_id, archive_reason")
         .eq("id", v.clientId)
         .maybeSingle();
       if (!data) return { ok: false, error: "That client no longer exists." };
@@ -192,15 +193,14 @@ export async function startConversation(input: unknown): Promise<SendResult> {
       const { current } = await getBusinessContext();
       if (!current) return { ok: false, error: "Add a business first." };
 
-      const { token, locationId, missing } = ghlConfig();
-      if (missing.length) return { ok: false, error: `Sending needs ${missing.join(" and ")} in Vercel.` };
+      const { token, locationId } = await readyGhlAccount(sb, current.id);
       // GHL finds an existing contact with this phone/email instead of duplicating it.
       const { id: ghlContactId } = await upsertGhlContact(token, locationId, { name: v.name, phone, email: v.email });
       const row = await ensureClient(sb, { ghlContactId, name: v.name, phone, email: v.email }, current.id);
       // The phone or email may belong to a client already archived as spam.
       if (row.archive_reason === "spam") return { ok: false, error: SPAM_BLOCK };
       if (v.project) await sb.from("clients").update({ project: v.project }).eq("id", row.id).eq("project", "");
-      client = { id: row.id, name: row.name, phone: row.phone || phone, email: row.email || v.email, ghl_contact_id: ghlContactId };
+      client = { id: row.id, name: row.name, phone: row.phone || phone, email: row.email || v.email, ghl_contact_id: ghlContactId, business_id: current.id };
     }
 
     await sendAndRecord(sb, me, client, v);

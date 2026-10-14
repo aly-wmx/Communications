@@ -1,13 +1,15 @@
 import { eventFromApiMessage, messageRecordFromApi, toMillis, type GhlApiConversation, type GhlApiMessage, type MessageRecord } from "@/lib/comms/ghl";
-import { conversationMessages, fetchEmailContent, ghlConfig, GhlError, listGhlUsers, searchConversations } from "@/lib/comms/ghl-api";
+import { conversationMessages, fetchEmailContent, GhlError, listGhlUsers, searchConversations } from "@/lib/comms/ghl-api";
+import { accountStateKey, type GhlAccount } from "@/lib/comms/ghl-accounts";
 import { htmlToText } from "@/lib/comms/outbound";
 import { teamGhlContactIds } from "@/lib/comms/notify-store";
-import { businessIdFor, cronSecretOk, ensureClient, recordGhlEvent, serviceDb, storeMessages, type Db } from "@/lib/comms/ghl-store";
+import { cronSecretOk, ensureClient, ghlAccounts, recordGhlEvent, serviceDb, storeMessages, type Db } from "@/lib/comms/ghl-store";
 import type { Json } from "@/lib/supabase/database.types";
 
 /**
  * Pulls recent GoHighLevel activity into the portal. Called once a minute by a
- * Supabase pg_cron job (header x-sync-secret).
+ * Supabase pg_cron job (header x-sync-secret). Each business connected to a GHL
+ * sub-account gets its own pass, cursor and lock, and its clients go to that business.
  *   ?check=1  — connection test: reports counts and field names only, writes nothing.
  *
  * Every message is stored on the client's conversation thread. Inbound client
@@ -27,7 +29,7 @@ const PAGE = 50;
 /** Hard stops so one run can't spin forever, even after a long outage; the next run continues. */
 const MAX_CONVERSATION_PAGES = 20;
 const MAX_MESSAGE_PAGES = 10;
-/** Stop starting new work after this, leaving time to save progress before Vercel's 60s limit. */
+/** Stop starting new work after this (shared between businesses), leaving time to save progress before Vercel's 60s limit. */
 const BUDGET_MS = 45_000;
 /** A run holds the lock this long; a crashed run frees it on its own. */
 const LOCK_SECONDS = 58;
@@ -67,8 +69,8 @@ interface SyncState {
  * crashed run's lock expires on its own). If the lock itself errors, run anyway:
  * a missed sync is worse than a rare overlap, which the claims already make safe.
  */
-async function takeLock(sb: Db): Promise<boolean> {
-  const { data, error } = await sb.rpc("take_integration_lock", { lock_key: STATE_KEY, ttl_seconds: LOCK_SECONDS });
+async function takeLock(sb: Db, key: string): Promise<boolean> {
+  const { data, error } = await sb.rpc("take_integration_lock", { lock_key: key, ttl_seconds: LOCK_SECONDS });
   if (error) {
     console.warn("ghl sync: lock unavailable, running without it", error.message);
     return true;
@@ -76,8 +78,8 @@ async function takeLock(sb: Db): Promise<boolean> {
   return data === true;
 }
 
-async function releaseLock(sb: Db) {
-  await sb.rpc("release_integration_lock", { lock_key: STATE_KEY });
+async function releaseLock(sb: Db, key: string) {
+  await sb.rpc("release_integration_lock", { lock_key: key });
 }
 
 /** Every conversation changed since `since`, oldest first, paging GHL's newest-first list. */
@@ -108,28 +110,24 @@ async function messagesSince(token: string, conversationId: string, since: numbe
   return out.sort((a, b) => toMillis(a.dateAdded) - toMillis(b.dateAdded));
 }
 
-async function saveState(sb: Db, state: SyncState) {
-  await sb
-    .from("integration_state")
-    .upsert({ key: STATE_KEY, value: state as unknown as Json, updated_at: new Date().toISOString() });
+async function saveState(sb: Db, key: string, state: SyncState) {
+  await sb.from("integration_state").upsert({ key, value: state as unknown as Json, updated_at: new Date().toISOString() });
 }
 
-async function run(req: Request): Promise<Response> {
-  if (!cronSecretOk(req)) return json(401, { error: "Unauthorized" });
+type AccountResult = { status: number; body: Record<string, unknown> };
 
-  const { token, locationId, missing } = ghlConfig();
-  const params = new URL(req.url).searchParams;
-  const check = params.get("check") === "1";
-
-  const sb = serviceDb();
-  const { data: stateRow } = await sb.from("integration_state").select("value").eq("key", STATE_KEY).maybeSingle();
+/** One business's pass: everything that changed in its GHL sub-account since its last run. */
+async function syncAccount(sb: Db, account: GhlAccount, check: boolean, deadline: number): Promise<AccountResult> {
+  const { token, locationId, businessId, missing } = account;
+  const stateKey = accountStateKey(STATE_KEY, account);
+  const { data: stateRow } = await sb.from("integration_state").select("value").eq("key", stateKey).maybeSingle();
   const prev = (stateRow?.value ?? {}) as SyncState;
   const startedAt = new Date();
 
   if (missing.length) {
     const error = `Missing in Vercel: ${missing.join(", ")}`;
-    if (!check) await saveState(sb, { ...prev, lastRunAt: startedAt.toISOString(), lastError: error });
-    return json(500, { ok: false, error });
+    if (!check) await saveState(sb, stateKey, { ...prev, lastRunAt: startedAt.toISOString(), lastError: error });
+    return { status: 500, body: { ok: false, error } };
   }
 
   const since = prev.cursor ? toMillis(prev.cursor) - OVERLAP_MS : startedAt.getTime() - FIRST_RUN_LOOKBACK_MS;
@@ -156,27 +154,30 @@ async function run(req: Request): Promise<Response> {
       const changed = conversations.filter((c) => c.id && toMillis(c.lastMessageDate) >= since);
       const sample = changed[0] ?? conversations[0];
       const msgs = sample?.id ? (await conversationMessages(token, sample.id, 20)).messages : [];
-      return json(200, {
-        ok: true,
-        check: true,
-        conversationsReturned: conversations.length,
-        changedSinceLastSync: changed.length,
-        conversationFields: sample ? Object.keys(sample).sort() : [],
-        messageFields: msgs[0] ? Object.keys(msgs[0]).sort() : [],
-        messageTypes: [...new Set(msgs.map((m) => String(m.messageType ?? "")))],
-        directions: [...new Set(msgs.map((m) => String(m.direction ?? "")))],
-        humanSentOutbound: msgs.filter((m) => m.direction === "outbound" && m.userId).length,
-        lastSync: prev,
-      });
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          check: true,
+          conversationsReturned: conversations.length,
+          changedSinceLastSync: changed.length,
+          conversationFields: sample ? Object.keys(sample).sort() : [],
+          messageFields: msgs[0] ? Object.keys(msgs[0]).sort() : [],
+          messageTypes: [...new Set(msgs.map((m) => String(m.messageType ?? "")))],
+          directions: [...new Set(msgs.map((m) => String(m.direction ?? "")))],
+          humanSentOutbound: msgs.filter((m) => m.direction === "outbound" && m.userId).length,
+          lastSync: prev,
+        },
+      };
     } catch (err) {
-      return json(502, { ok: false, error: err instanceof GhlError ? err.message : "Check failed." });
+      return { status: 502, body: { ok: false, error: err instanceof GhlError ? err.message : "Check failed." } };
     }
   }
 
-  if (!(await takeLock(sb))) {
-    return json(200, { ok: true, skipped: "Another sync run is still going." });
+  if (!(await takeLock(sb, stateKey))) {
+    return { status: 200, body: { ok: true, skipped: "Another sync run is still going." } };
   }
-  const outOfTime = () => Date.now() - startedAt.getTime() > BUDGET_MS;
+  const outOfTime = () => Date.now() > deadline;
   const failures: Record<string, number> = { ...(prev.failures ?? {}) };
   const problems: string[] = [];
 
@@ -185,7 +186,8 @@ async function run(req: Request): Promise<Response> {
     counts.conversations = changed.length;
 
     // GHL user names (for "who replied" labels), refreshed at most hourly; a missing scope never stops the sync.
-    const { data: usersState } = await sb.from("integration_state").select("value").eq("key", "ghl_users").maybeSingle();
+    const usersKey = accountStateKey("ghl_users", account);
+    const { data: usersState } = await sb.from("integration_state").select("value").eq("key", usersKey).maybeSingle();
     const usersAt = (usersState?.value as { refreshedAt?: string } | null)?.refreshedAt;
     if (!usersAt || startedAt.getTime() - new Date(usersAt).getTime() > 60 * 60_000) {
       try {
@@ -199,16 +201,15 @@ async function run(req: Request): Promise<Response> {
           const patch = { ...(!t.phone && u.phone ? { phone: u.phone } : {}), ...(!t.email && u.email ? { email: u.email } : {}) };
           if (Object.keys(patch).length) await sb.from("team_members").update(patch).eq("id", t.id);
         }
-        await sb.from("integration_state").upsert({ key: "ghl_users", value: { refreshedAt: startedAt.toISOString(), count: users.length } as unknown as Json });
+        await sb.from("integration_state").upsert({ key: usersKey, value: { refreshedAt: startedAt.toISOString(), count: users.length } as unknown as Json });
       } catch (err) {
         await sb.from("integration_state").upsert({
-          key: "ghl_users",
+          key: usersKey,
           value: { refreshedAt: startedAt.toISOString(), error: err instanceof Error ? err.message : "failed" } as unknown as Json,
         });
       }
     }
 
-    const businessId = await businessIdFor(sb, params.get("business"));
     const teamContacts = await teamGhlContactIds(sb);
     const syncConversation = async (conv: GhlApiConversation) => {
       const msgs = await messagesSince(token, conv.id!, since);
@@ -298,7 +299,8 @@ async function run(req: Request): Promise<Response> {
     // Fill in text and pictures for emails copied before this was possible, a few per run (only with time to spare).
     const { data: unchecked } = outOfTime() ? { data: [] } : await sb
       .from("messages")
-      .select("id, body, attachments")
+      .select("id, body, attachments, clients!inner(business_id)")
+      .eq("clients.business_id", businessId)
       .eq("channel", "Email")
       .neq("status", EMAIL_CHECKED)
       .not("id", "like", "portal_%")
@@ -328,7 +330,7 @@ async function run(req: Request): Promise<Response> {
     const seen = new Set(changed.map((c) => c.id));
     for (const id of Object.keys(failures)) if (!seen.has(id)) delete failures[id];
 
-    await saveState(sb, {
+    await saveState(sb, stateKey, {
       cursor: new Date(cursor).toISOString(),
       lastRunAt: startedAt.toISOString(),
       lastOkAt: new Date().toISOString(),
@@ -336,16 +338,40 @@ async function run(req: Request): Promise<Response> {
       failures,
       ...(problems.length ? { lastError: problems.join(" · ") } : {}),
     });
-    return json(200, { ok: true, ...counts });
+    return { status: 200, body: { ok: true, ...counts } };
   } catch (err) {
     const message = err instanceof GhlError ? err.message : "Sync failed; see Vercel logs.";
     console.error("ghl sync failed", err);
     // Keep the old cursor so the next run retries this window.
-    await saveState(sb, { ...prev, lastRunAt: startedAt.toISOString(), lastError: message, lastCounts: counts });
-    return json(err instanceof GhlError ? 502 : 500, { ok: false, error: message, ...counts });
+    await saveState(sb, stateKey, { ...prev, lastRunAt: startedAt.toISOString(), lastError: message, lastCounts: counts });
+    return { status: err instanceof GhlError ? 502 : 500, body: { ok: false, error: message, ...counts } };
   } finally {
-    await releaseLock(sb);
+    await releaseLock(sb, stateKey);
   }
+}
+
+async function run(req: Request): Promise<Response> {
+  if (!cronSecretOk(req)) return json(401, { error: "Unauthorized" });
+  const check = new URL(req.url).searchParams.get("check") === "1";
+  const sb = serviceDb();
+  const accounts = await ghlAccounts(sb);
+  if (!accounts.length) {
+    const error = "No business is connected to GoHighLevel (Businesses page, or GHL_LOCATION_ID in Vercel).";
+    if (!check) await saveState(sb, STATE_KEY, { lastRunAt: new Date().toISOString(), lastError: error });
+    return json(500, { ok: false, error });
+  }
+
+  // Each business gets an equal share of what's left of the run, so one busy sub-account can't starve the others.
+  const end = Date.now() + BUDGET_MS;
+  const results: Array<{ businessId: string } & Record<string, unknown>> = [];
+  let status = 200;
+  for (let i = 0; i < accounts.length; i++) {
+    const deadline = Date.now() + (end - Date.now()) / (accounts.length - i);
+    const r = await syncAccount(sb, accounts[i], check, deadline);
+    results.push({ businessId: accounts[i].businessId, ...r.body });
+    status = Math.max(status, r.status);
+  }
+  return json(status, { ok: status === 200, accounts: results });
 }
 
 async function handler(req: Request): Promise<Response> {

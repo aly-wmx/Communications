@@ -22,9 +22,9 @@ export type Database = {
         ];
       };
       businesses: {
-        Row: { color: string; created_at: string; id: string; name: string };
-        Insert: { color?: string; created_at?: string; id?: string; name: string };
-        Update: { color?: string; created_at?: string; id?: string; name?: string };
+        Row: { color: string; created_at: string; ghl_location_id: string | null; id: string; name: string };
+        Insert: { color?: string; created_at?: string; ghl_location_id?: string | null; id?: string; name: string };
+        Update: { color?: string; created_at?: string; ghl_location_id?: string | null; id?: string; name?: string };
         Relationships: [];
       };
       clients: {

@@ -4,6 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/supabase/database.types";
 import { closeInTime, normalisePhone, sameMessage, type GhlEvent, type MessageRecord } from "./ghl";
 import { planNewMessage } from "./notify-plan";
+import { NOT_CONNECTED, resolveGhlAccounts, type GhlAccount } from "./ghl-accounts";
+import { GhlError } from "./ghl-api";
 import { loadTeam, planTeam, saveNotifications } from "./notify-store";
 
 /**
@@ -52,6 +54,29 @@ export async function businessIdFor(sb: Db, wanted?: string | null): Promise<str
   return id;
 }
 
+/** Every business's GoHighLevel account (see ghl-accounts). */
+export async function ghlAccounts(sb: Db): Promise<GhlAccount[]> {
+  const { data, error } = await sb.from("businesses").select("id, ghl_location_id").order("created_at");
+  if (error) throw error;
+  return resolveGhlAccounts(data ?? []);
+}
+
+/** The account a business sends and syncs through; throws a message fit to show when it isn't ready. */
+export async function readyGhlAccount(sb: Db, businessId: string): Promise<GhlAccount> {
+  const account = (await ghlAccounts(sb)).find((a) => a.businessId === businessId);
+  if (!account) throw new GhlError(503, NOT_CONNECTED);
+  if (account.missing.length) throw new GhlError(503, `GoHighLevel needs ${account.missing.join(" and ")} in Vercel.`);
+  return account;
+}
+
+/** The account for the business a client belongs to. */
+export async function readyGhlAccountForClient(sb: Db, clientId: string): Promise<GhlAccount> {
+  const { data, error } = await sb.from("clients").select("business_id").eq("id", clientId).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new GhlError(404, "That client no longer exists.");
+  return readyGhlAccount(sb, data.business_id);
+}
+
 interface ClientRow {
   id: string;
   name: string;
@@ -84,10 +109,13 @@ export async function ensureClient(sb: Db, who: ClientIdentity, businessId: stri
     if (data) return data as ClientRow;
   }
 
+  // A GHL id names one contact, but the same phone or email can be a client of two businesses.
   const digits = normalisePhone(who.phone);
   const [byPhone, byEmail] = await Promise.all([
-    digits.length >= 7 ? sb.from("clients").select(cols).like("phone", `%${digits.slice(-4)}`).limit(50) : null,
-    who.email ? sb.from("clients").select(cols).ilike("email", likeExact(who.email)).limit(5) : null,
+    digits.length >= 7
+      ? sb.from("clients").select(cols).eq("business_id", businessId).like("phone", `%${digits.slice(-4)}`).limit(50)
+      : null,
+    who.email ? sb.from("clients").select(cols).eq("business_id", businessId).ilike("email", likeExact(who.email)).limit(5) : null,
   ]);
   const candidates = [...(byPhone?.data ?? []), ...(byEmail?.data ?? [])];
   if (candidates.length) {
@@ -105,7 +133,7 @@ export async function ensureClient(sb: Db, who: ClientIdentity, businessId: stri
     }
   }
 
-  // Client names are unique; disambiguate a clash with the phone/email, then a short id.
+  // Client names are unique within a business; disambiguate a clash with the phone/email, then a short id.
   const base = who.name || who.phone || who.email || "Unknown client";
   const candidatesNames = [base, `${base} (${who.phone || who.email || who.ghlContactId.slice(0, 8)})`, `${base} (${randomUUID().slice(0, 6)})`];
   for (const name of candidatesNames) {

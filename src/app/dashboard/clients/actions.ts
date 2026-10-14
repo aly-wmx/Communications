@@ -4,13 +4,23 @@ import { revalidatePath } from "next/cache";
 import { changeContact } from "@/lib/comms/contact-write";
 import { getSessionMember, requireAdmin } from "@/lib/auth";
 import { resolve } from "@/lib/comms/contacts";
-import { addGhlTags, ghlConfig, GhlError, removeGhlTags, updateGhlContact } from "@/lib/comms/ghl-api";
+import { addGhlTags, GhlError, removeGhlTags, updateGhlContact } from "@/lib/comms/ghl-api";
+import { readyGhlAccount, serviceDb } from "@/lib/comms/ghl-store";
 import { toE164 } from "@/lib/comms/outbound";
 import { createClient } from "@/lib/supabase/server";
 import { archiveSchema, clientUpdateSchema, stageSchema } from "@/lib/validation/clients";
 import { isStage, stageTag } from "@/lib/stages";
 
 export type UpdateClientResult = { ok: true; warning?: string } | { ok: false; error: string };
+
+/** The GHL token for the client's own business, or null when that business isn't connected. */
+async function ghlTokenFor(businessId: string): Promise<string | null> {
+  try {
+    return (await readyGhlAccount(serviceDb(), businessId)).token;
+  } catch {
+    return null;
+  }
+}
 
 /** Save a client's details; name/phone/email also go to their GoHighLevel contact. */
 export async function updateClient(input: unknown): Promise<UpdateClientResult> {
@@ -27,7 +37,7 @@ export async function updateClient(input: unknown): Promise<UpdateClientResult> 
   const supabase = await createClient();
   const { data: before } = await supabase
     .from("clients")
-    .select("id, name, phone, email, ghl_contact_id")
+    .select("id, name, phone, email, ghl_contact_id, business_id")
     .eq("id", v.clientId)
     .maybeSingle();
   if (!before) return { ok: false, error: "That client no longer exists." };
@@ -45,7 +55,7 @@ export async function updateClient(input: unknown): Promise<UpdateClientResult> 
   if (error) {
     return {
       ok: false,
-      error: error.message.includes("clients_name_key") ? "Another client already has that name." : "Couldn't save the changes.",
+      error: error.message.includes("clients_name_key") ? "Another client in this business already has that name." : "Couldn't save the changes.",
     };
   }
 
@@ -55,8 +65,8 @@ export async function updateClient(input: unknown): Promise<UpdateClientResult> 
   // Keep GoHighLevel in step. The portal save already succeeded, so a GHL problem is a warning, not a failure.
   const changedForGhl = before.name !== v.name || before.phone !== phone || before.email !== v.email;
   if (before.ghl_contact_id && changedForGhl) {
-    const { token, missing } = ghlConfig();
-    if (missing.length) return { ok: true, warning: "Saved here, but GoHighLevel isn't connected, so it wasn't updated there." };
+    const token = await ghlTokenFor(before.business_id);
+    if (!token) return { ok: true, warning: "Saved here, but GoHighLevel isn't connected, so it wasn't updated there." };
     try {
       await updateGhlContact(token, before.ghl_contact_id, { name: v.name, phone, email: v.email });
     } catch (err) {
@@ -98,7 +108,7 @@ export async function archiveClient(input: unknown): Promise<UpdateClientResult>
   const { clientId, reason } = parsed.data;
 
   const supabase = await createClient();
-  const { data: client } = await supabase.from("clients").select("id, name, ghl_contact_id").eq("id", clientId).maybeSingle();
+  const { data: client } = await supabase.from("clients").select("id, name, ghl_contact_id, business_id").eq("id", clientId).maybeSingle();
   if (!client) return { ok: false, error: "That client no longer exists." };
 
   const now = new Date();
@@ -123,8 +133,8 @@ export async function archiveClient(input: unknown): Promise<UpdateClientResult>
 
   revalidatePath("/dashboard", "layout");
   if (reason === "spam" && client.ghl_contact_id) {
-    const { token, missing } = ghlConfig();
-    if (missing.length) return { ok: true, warning: "Archived as spam here; GoHighLevel isn't connected, so it wasn't tagged there." };
+    const token = await ghlTokenFor(client.business_id);
+    if (!token) return { ok: true, warning: "Archived as spam here; GoHighLevel isn't connected, so it wasn't tagged there." };
     try {
       await addGhlTags(token, client.ghl_contact_id, [SPAM_TAG]);
     } catch (err) {
@@ -144,7 +154,7 @@ export async function restoreClient(input: unknown): Promise<UpdateClientResult>
   const supabase = await createClient();
   const { data: client } = await supabase
     .from("clients")
-    .select("id, ghl_contact_id, archive_reason")
+    .select("id, ghl_contact_id, business_id, archive_reason")
     .eq("id", parsed.data.clientId)
     .maybeSingle();
   if (!client) return { ok: false, error: "That client no longer exists." };
@@ -157,8 +167,8 @@ export async function restoreClient(input: unknown): Promise<UpdateClientResult>
   revalidatePath("/dashboard", "layout");
 
   if (client.archive_reason === "spam" && client.ghl_contact_id) {
-    const { token, missing } = ghlConfig();
-    if (!missing.length) {
+    const token = await ghlTokenFor(client.business_id);
+    if (token) {
       try {
         await removeGhlTags(token, client.ghl_contact_id, [SPAM_TAG]);
       } catch (err) {
@@ -178,7 +188,7 @@ export async function setClientStage(input: unknown): Promise<UpdateClientResult
   const { clientId, stage } = parsed.data;
 
   const supabase = await createClient();
-  const { data: client } = await supabase.from("clients").select("id, stage, ghl_contact_id").eq("id", clientId).maybeSingle();
+  const { data: client } = await supabase.from("clients").select("id, stage, ghl_contact_id, business_id").eq("id", clientId).maybeSingle();
   if (!client) return { ok: false, error: "That client no longer exists." };
   if (client.stage === stage) return { ok: true };
 
@@ -189,8 +199,8 @@ export async function setClientStage(input: unknown): Promise<UpdateClientResult
   revalidatePath("/dashboard", "layout");
 
   if (client.ghl_contact_id) {
-    const { token, missing } = ghlConfig();
-    if (missing.length) return { ok: true, warning: "Stage saved; GoHighLevel isn't connected, so the tag wasn't updated." };
+    const token = await ghlTokenFor(client.business_id);
+    if (!token) return { ok: true, warning: "Stage saved; GoHighLevel isn't connected, so the tag wasn't updated." };
     try {
       if (client.stage && isStage(client.stage)) await removeGhlTags(token, client.ghl_contact_id, [stageTag(client.stage)]);
       if (stage) await addGhlTags(token, client.ghl_contact_id, [stageTag(stage)]);

@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
-import { ghlConfig } from "@/lib/comms/ghl-api";
-import { cronSecretOk } from "@/lib/comms/ghl-store";
+import { cronSecretOk, ghlAccounts, readyGhlAccountForClient, serviceDb } from "@/lib/comms/ghl-store";
+import type { GhlAccount } from "@/lib/comms/ghl-accounts";
 import { createClient } from "@/lib/supabase/server";
 import { playableWav } from "@/lib/comms/wav";
 import { audioType as contentType, fetchTrustedAudio, serveAudio as serve } from "@/lib/comms/audio-response";
@@ -73,6 +73,18 @@ async function playable(res: Response, range: string | null): Promise<Response |
   return serve(playableWav(raw).bytes, "audio/wav", range);
 }
 
+/** The GHL sub-account of the business whose client the message belongs to (the original one for a check on an unknown id). */
+async function accountForMessage(messageId: string): Promise<GhlAccount | null> {
+  const sb = serviceDb();
+  const { data: message } = await sb.from("messages").select("client_id").eq("id", messageId).maybeSingle();
+  try {
+    if (message) return await readyGhlAccountForClient(sb, message.client_id);
+    return (await ghlAccounts(sb)).find((a) => a.isOriginal && !a.missing.length) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req: NextRequest, ctx: RouteContext<"/api/recordings/[messageId]">) {
   const { messageId } = await ctx.params;
   const viaSecret = cronSecretOk(req);
@@ -84,8 +96,9 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/recordings/[
     if (!message) return new Response("Not found", { status: 404 });
   }
 
-  const { token, locationId, missing } = ghlConfig();
-  if (missing.length) return new Response("Recordings need the GoHighLevel connection set up.", { status: 503 });
+  const account = await accountForMessage(messageId);
+  if (!account) return new Response("Recordings need this business connected to GoHighLevel.", { status: 503 });
+  const { token, locationId } = account;
   const range = req.headers.get("range");
 
   // 1) The call-recording endpoint.

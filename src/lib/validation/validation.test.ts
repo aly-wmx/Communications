@@ -32,4 +32,15 @@ describe("business schemas", () => {
       businessFieldSchema.safeParse({ id: "1b4e28ba-2fa1-41d2-883f-0016d3cca427", field: "name", value: "Twofold" }).success,
     ).toBe(true);
   });
+
+  it("accepts a GoHighLevel location id, or empty to disconnect", () => {
+    const location = (value: string) =>
+      businessFieldSchema.safeParse({ id: "1b4e28ba-2fa1-41d2-883f-0016d3cca427", field: "ghl_location_id", value }).success;
+    expect(location("ve9EPM428h8vShlRW1KT")).toBe(true);
+    expect(location(" ve9EPM428h8vShlRW1KT ")).toBe(true);
+    expect(location("")).toBe(true);
+    expect(location("short")).toBe(false);
+    expect(location("has spaces in it")).toBe(false);
+    expect(location("https://app.gohighlevel.com/v2/location/abc")).toBe(false);
+  });
 });

@@ -7,6 +7,15 @@ import { EditableTextCell } from "@/components/EditableCell";
 import type { Business } from "@/lib/business";
 import { addBusiness, updateBusinessField } from "./actions";
 
+/** What the Businesses page shows about a business's GoHighLevel sub-account (worked out on the server; no tokens). */
+export interface GhlConnection {
+  locationId: string;
+  /** Uses GHL_LOCATION_ID from Vercel rather than a location set here. */
+  inherited: boolean;
+  status: string;
+  ok: boolean;
+}
+
 const SWATCHES = ["#1C2B47", "#2B4438", "#B08D57", "#7A2E3A", "#3F5E8C", "#5B4B8A"];
 
 function ColorPicker({ value, onChange, disabled }: { value: string; onChange: (c: string) => void; disabled?: boolean }) {
@@ -29,7 +38,7 @@ function ColorPicker({ value, onChange, disabled }: { value: string; onChange: (
   );
 }
 
-function BusinessRow({ business }: { business: Business }) {
+function BusinessRow({ business, ghl }: { business: Business; ghl?: GhlConnection }) {
   const [color, setColor] = useState(business.color);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -57,12 +66,23 @@ function BusinessRow({ business }: { business: Business }) {
         />
       </div>
       <ColorPicker value={color} onChange={handleColor} disabled={pending} />
+      <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 pl-7">
+        <span className="text-xs font-medium text-zinc-600">GoHighLevel location ID</span>
+        <div className="w-64">
+          <EditableTextCell
+            value={ghl?.locationId ?? ""}
+            placeholder={ghl?.inherited ? "Using GHL_LOCATION_ID from Vercel" : "Not connected"}
+            onSave={(value) => updateBusinessField({ id: business.id, field: "ghl_location_id", value })}
+          />
+        </div>
+        {ghl && <span className={`text-xs ${ghl.ok ? "text-[#3F7A5C]" : "text-amber-700"}`}>{ghl.status}</span>}
+      </div>
       {error && <p className="w-full text-xs text-red-600">{error}</p>}
     </li>
   );
 }
 
-export function BusinessList({ businesses }: { businesses: Business[] }) {
+export function BusinessList({ businesses, ghl }: { businesses: Business[]; ghl: Record<string, GhlConnection> }) {
   const [name, setName] = useState("");
   const [color, setColor] = useState(SWATCHES[1]);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +102,7 @@ export function BusinessList({ businesses }: { businesses: Business[] }) {
     <div className="max-w-3xl space-y-4">
       <ul className="rounded-md border border-zinc-200 bg-white">
         {businesses.map((b) => (
-          <BusinessRow key={b.id} business={b} />
+          <BusinessRow key={b.id} business={b} ghl={ghl[b.id]} />
         ))}
       </ul>
 

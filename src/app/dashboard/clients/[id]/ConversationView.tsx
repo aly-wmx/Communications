@@ -13,6 +13,7 @@ import { Composer } from "./Composer";
 import { ContactActions, type OpenContact } from "./ContactActions";
 import { StagePicker } from "./StagePicker";
 import { isStage } from "@/lib/stages";
+import { resolveGhlAccounts } from "@/lib/comms/ghl-accounts";
 
 const PAGE_SIZE = 300;
 
@@ -48,7 +49,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
   const [{ data: client }, { data: newest }, { count }, { data: open }, { data: team }] = await Promise.all([
     supabase
       .from("clients")
-      .select("id, name, project, phone, email, owner_id, notes, archived_at, archive_reason, archived_by, stage")
+      .select("id, name, project, phone, email, owner_id, notes, archived_at, archive_reason, archived_by, stage, business_id")
       .eq("id", id)
       .maybeSingle(),
     threadQuery,
@@ -131,8 +132,9 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
   const olderHref = hasOlder ? `${basePath}${sep}before=${encodeURIComponent(rows[0].occurred_at)}` : undefined;
   const newerHref = before ? basePath : undefined;
 
-  // Open the same conversation in GoHighLevel to reply there.
-  const locationId = process.env.GHL_LOCATION_ID ?? "";
+  // Open the same conversation in GoHighLevel (the client's business's sub-account) to reply there.
+  const { data: businesses } = await supabase.from("businesses").select("id, ghl_location_id").order("created_at");
+  const locationId = resolveGhlAccounts(businesses ?? []).find((a) => a.businessId === client.business_id)?.locationId ?? "";
   const conversationId = page.find((m) => m.conversation_id)?.conversation_id ?? "";
   const ghlHref =
     locationId && conversationId

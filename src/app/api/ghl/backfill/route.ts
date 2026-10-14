@@ -1,13 +1,16 @@
 import { eventFromApiMessage, messageRecordFromApi, toMillis, unansweredTail, type GhlApiConversation, type MessageRecord } from "@/lib/comms/ghl";
-import { conversationMessages, ghlConfig, GhlError, searchConversations } from "@/lib/comms/ghl-api";
+import { conversationMessages, GhlError, searchConversations } from "@/lib/comms/ghl-api";
+import { accountStateKey, type GhlAccount } from "@/lib/comms/ghl-accounts";
 import { teamGhlContactIds } from "@/lib/comms/notify-store";
-import { businessIdFor, cronSecretOk, ensureClient, recordGhlEvent, serviceDb, storeMessages, type Db } from "@/lib/comms/ghl-store";
+import { cronSecretOk, ensureClient, ghlAccounts, recordGhlEvent, serviceDb, storeMessages, type Db } from "@/lib/comms/ghl-store";
 import type { Json } from "@/lib/supabase/database.types";
 
 /**
  * One-time copy of every GoHighLevel conversation into client threads.
  * Called once a minute by pg_cron; each call works for ~45s, saves its place,
  * and the next call continues. Once everything is copied it just returns "done".
+ * Each business connected to a GHL sub-account has its own copy and progress,
+ * so connecting a new business copies its history without touching the others.
  *
  * Unanswered clients from the last 14 days also go into the queue (the rest is
  * history only). Safe alongside the live sync: duplicates are ignored.
@@ -51,37 +54,34 @@ const slim = (c: GhlApiConversation): Conv => ({
   lastMessageDate: c.lastMessageDate,
 });
 
-async function save(sb: Db, state: BackfillState) {
-  await sb.from("integration_state").upsert({ key: STATE_KEY, value: state as unknown as Json, updated_at: new Date().toISOString() });
+async function save(sb: Db, key: string, state: BackfillState) {
+  await sb.from("integration_state").upsert({ key, value: state as unknown as Json, updated_at: new Date().toISOString() });
 }
 
-async function run(req: Request): Promise<Response> {
-  if (!cronSecretOk(req)) return json(401, { error: "Unauthorized" });
-  const { token, locationId, missing } = ghlConfig();
-  if (missing.length) return json(500, { ok: false, error: `Missing in Vercel: ${missing.join(", ")}` });
+type AccountResult = { status: number; body: Record<string, unknown> };
 
-  const sb = serviceDb();
-  const { data: row } = await sb.from("integration_state").select("value").eq("key", STATE_KEY).maybeSingle();
-  const state = (row?.value ?? {}) as BackfillState;
+/** Continue one business's copy until `deadline`. */
+async function backfillAccount(sb: Db, account: GhlAccount, state: BackfillState, deadline: number): Promise<AccountResult> {
+  const { token, locationId, businessId, missing } = account;
+  const key = accountStateKey(STATE_KEY, account);
+  if (missing.length) return { status: 500, body: { ok: false, error: `Missing in Vercel: ${missing.join(", ")}` } };
   const started = Date.now();
   const now = new Date();
 
-  if (state.done) return json(200, { ok: true, done: true, totals: state.totals });
-  if (state.lockUntil && new Date(state.lockUntil).getTime() > started) return json(200, { ok: true, busy: true });
+  if (state.lockUntil && new Date(state.lockUntil).getTime() > started) return { status: 200, body: { ok: true, busy: true } };
 
   state.startedAt ??= now.toISOString();
   state.pending ??= [];
   state.totals ??= { conversations: 0, messages: 0, queued: 0 };
   state.lockUntil = new Date(started + 58_000).toISOString();
   state.lastError = undefined;
-  await save(sb, state);
+  await save(sb, key, state);
 
-  const businessId = await businessIdFor(sb, new URL(req.url).searchParams.get("business"));
   const teamContacts = await teamGhlContactIds(sb);
   const batch = { conversations: 0, messages: 0, queued: 0 };
 
   try {
-    while (Date.now() - started < BUDGET_MS) {
+    while (Date.now() < deadline) {
       if (!state.current) {
         if (!state.pending.length) {
           const page = await searchConversations(token, locationId, PAGE, state.searchAfter);
@@ -145,8 +145,8 @@ async function run(req: Request): Promise<Response> {
     };
     state.lastRunAt = now.toISOString();
     state.lockUntil = undefined;
-    await save(sb, state);
-    return json(200, { ok: true, done: Boolean(state.done), thisRun: batch, totals: state.totals });
+    await save(sb, key, state);
+    return { status: 200, body: { ok: true, done: Boolean(state.done), thisRun: batch, totals: state.totals } };
   } catch (err) {
     console.error("ghl backfill failed", err);
     state.totals = {
@@ -157,9 +157,37 @@ async function run(req: Request): Promise<Response> {
     state.lastRunAt = now.toISOString();
     state.lastError = err instanceof GhlError ? err.message : "Copy paused on an error; it retries next minute.";
     state.lockUntil = undefined;
-    await save(sb, state);
-    return json(err instanceof GhlError ? 502 : 500, { ok: false, error: state.lastError, thisRun: batch });
+    await save(sb, key, state);
+    return { status: err instanceof GhlError ? 502 : 500, body: { ok: false, error: state.lastError, thisRun: batch } };
   }
+}
+
+async function run(req: Request): Promise<Response> {
+  if (!cronSecretOk(req)) return json(401, { error: "Unauthorized" });
+  const sb = serviceDb();
+  const accounts = await ghlAccounts(sb);
+  if (!accounts.length) return json(500, { ok: false, error: "No business is connected to GoHighLevel." });
+
+  const states = await Promise.all(
+    accounts.map(async (a) => {
+      const { data } = await sb.from("integration_state").select("value").eq("key", accountStateKey(STATE_KEY, a)).maybeSingle();
+      return (data?.value ?? {}) as BackfillState;
+    }),
+  );
+  const todo = accounts.map((a, i) => ({ account: a, state: states[i] })).filter((x) => !x.state.done);
+  if (!todo.length) return json(200, { ok: true, done: true, totals: states.map((s) => s.totals) });
+
+  // Businesses still copying share the run equally.
+  const end = Date.now() + BUDGET_MS;
+  const results: Array<{ businessId: string } & Record<string, unknown>> = [];
+  let status = 200;
+  for (let i = 0; i < todo.length; i++) {
+    const deadline = Date.now() + (end - Date.now()) / (todo.length - i);
+    const r = await backfillAccount(sb, todo[i].account, todo[i].state, deadline);
+    results.push({ businessId: todo[i].account.businessId, ...r.body });
+    status = Math.max(status, r.status);
+  }
+  return json(status, { ok: status === 200, done: false, accounts: results });
 }
 
 async function handler(req: Request): Promise<Response> {

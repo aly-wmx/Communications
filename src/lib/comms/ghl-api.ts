@@ -2,10 +2,14 @@ import "server-only";
 import type { GhlApiConversation, GhlApiMessage } from "./ghl";
 import { emailMetaFrom, type EmailMeta } from "./email-meta";
 
-/** Minimal GoHighLevel API client for the sync and history copy. Server only: uses GHL_API_KEY. */
+/** Minimal GoHighLevel API client. Server only: callers pass the token of the sub-account they're working in. */
 
 const GHL = "https://services.leadconnectorhq.com";
 
+/**
+ * The original connection (GHL_LOCATION_ID + GHL_API_KEY). Only teammate notifications use it directly;
+ * anything about a client goes through that client's business's account (readyGhlAccount in ghl-store).
+ */
 export function ghlConfig(): { token: string; locationId: string; missing: string[] } {
   const token = process.env.GHL_API_KEY ?? "";
   const locationId = process.env.GHL_LOCATION_ID ?? "";

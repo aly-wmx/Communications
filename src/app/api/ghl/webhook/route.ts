@@ -1,14 +1,28 @@
 import { parseGhlPayload, type GhlEvent } from "@/lib/comms/ghl";
-import { businessIdFor, recordGhlEvent, serviceDb, webhookSecretOk } from "@/lib/comms/ghl-store";
+import { businessIdFor, ghlAccounts, recordGhlEvent, serviceDb, webhookSecretOk, type Db } from "@/lib/comms/ghl-store";
 
 /**
  * GoHighLevel → client queue (pushed by a GHL workflow, within seconds).
  * POST /api/ghl/webhook?secret=…[&business=<id>]  (or header x-webhook-secret)
+ * The business is the one connected to the GHL location that sent it; &business= is the fallback.
  *
  * Inbound: adds to the client's open contact, or opens a new one.
  * Outbound: marks the client's open contacts as responded.
  * The once-a-minute sync (/api/ghl/sync) covers the same messages; duplicates are ignored.
  */
+
+/** GHL workflow payloads name their sub-account as location.id (older ones: locationId). */
+function locationIdIn(payload: unknown): string {
+  const p = payload as { location?: { id?: unknown }; locationId?: unknown } | null;
+  const id = p?.location?.id ?? p?.locationId;
+  return typeof id === "string" ? id : "";
+}
+
+async function businessFor(sb: Db, payload: unknown, wanted: string | null): Promise<string> {
+  const location = locationIdIn(payload);
+  const connected = location ? (await ghlAccounts(sb)).find((a) => a.locationId === location) : undefined;
+  return connected?.businessId ?? businessIdFor(sb, wanted);
+}
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -17,8 +31,10 @@ export async function POST(req: Request): Promise<Response> {
   if (!webhookSecretOk(req)) return json(401, { error: "Unauthorized" });
 
   let event: GhlEvent;
+  let payload: unknown;
   try {
-    event = parseGhlPayload(await req.json());
+    payload = await req.json();
+    event = parseGhlPayload(payload);
   } catch (err) {
     return json(400, { error: (err as Error).message });
   }
@@ -29,7 +45,7 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const sb = serviceDb();
-    const businessId = await businessIdFor(sb, new URL(req.url).searchParams.get("business"));
+    const businessId = await businessFor(sb, payload, new URL(req.url).searchParams.get("business"));
     const result = await recordGhlEvent(sb, event, businessId);
     return json(200, { ok: true, ...result });
   } catch (err) {

@@ -34,9 +34,12 @@ export async function updateBusinessField(input: unknown): Promise<ActionResult>
   const { id, field, value } = parsed.data;
 
   const supabase = await createClient();
-  const update = field === "name" ? { name: value } : { color: value };
+  const update = field === "name" ? { name: value } : field === "color" ? { color: value } : { ghl_location_id: value || null };
   const { error } = await supabase.from("businesses").update(update).eq("id", id);
   if (error) {
+    if (error.message.includes("businesses_ghl_location_id_key")) {
+      return { ok: false, error: "Another business is already connected to that GoHighLevel location." };
+    }
     return { ok: false, error: duplicate(error.message) ? "There's already a business with that name." : "Couldn't save that change." };
   }
 

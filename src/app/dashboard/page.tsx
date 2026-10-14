@@ -5,6 +5,7 @@ import { getBusinessContext } from "@/lib/business";
 import { loadQueue } from "@/lib/comms/load";
 import { buildOverview, dayKey, describeChange } from "@/lib/comms/overview";
 import { formatMinutes } from "@/lib/comms/sla";
+import { loadGhlHealth } from "@/lib/comms/ghl-health";
 import { createClient } from "@/lib/supabase/server";
 import { BarList, ColumnChart } from "./reports/Charts";
 
@@ -245,17 +246,23 @@ async function AdminHealth({
 }) {
   const supabase = await createClient();
   const since = new Date(nowMs - 24 * 60 * 60_000).toISOString();
-  const [{ data: sync }, { data: users }, { count: failed }] = await Promise.all([
-    supabase.from("integration_state").select("value").eq("key", "ghl_sync").maybeSingle(),
+  const [ghl, { data: users }, { count: failed }] = await Promise.all([
+    loadGhlHealth(supabase),
     supabase.from("integration_state").select("value").eq("key", "ghl_users").maybeSingle(),
     supabase.from("notifications").select("id", { count: "exact", head: true }).gte("created_at", since).or("slack_status.eq.failed,email_status.eq.failed"),
   ]);
-  const s = (sync?.value ?? {}) as { lastOkAt?: string; lastError?: string };
-  const syncAge = s.lastOkAt ? Math.floor((nowMs - new Date(s.lastOkAt).getTime()) / 60_000) : null;
   const usersErr = (users?.value as { error?: string } | null)?.error;
 
   const issues: Array<{ text: string; href: string }> = [];
-  if (syncAge == null || syncAge > 5) issues.push({ text: s.lastError ? `GoHighLevel sync failing: ${s.lastError}` : `GoHighLevel hasn't synced for ${syncAge == null ? "a while" : formatMinutes(syncAge)}`, href: "/dashboard/settings" });
+  // Every connected business's sub-account; a business that was never connected isn't an error.
+  for (const h of ghl.filter((x) => x.connected)) {
+    const who = ghl.length > 1 ? ` (${h.businessName})` : "";
+    const syncAge = h.lastOkAt ? Math.floor((nowMs - new Date(h.lastOkAt).getTime()) / 60_000) : null;
+    if (h.missing.length) issues.push({ text: `GoHighLevel${who} needs ${h.missing.join(" and ")} in Vercel`, href: "/dashboard/businesses" });
+    else if (syncAge == null || syncAge > 5)
+      issues.push({ text: h.lastError ? `GoHighLevel sync failing${who}: ${h.lastError}` : `GoHighLevel${who} hasn't synced for ${syncAge == null ? "a while" : formatMinutes(syncAge)}`, href: "/dashboard/businesses" });
+  }
+  if (!ghl.some((x) => x.connected)) issues.push({ text: "No business is connected to GoHighLevel", href: "/dashboard/businesses" });
   if (!process.env.SLACK_BOT_TOKEN) issues.push({ text: "Slack isn't connected, so escalations only go by email and the bell", href: "/dashboard/settings" });
   if (failed) issues.push({ text: `${failed} notification${failed === 1 ? "" : "s"} failed to deliver in the last 24 hours`, href: "/dashboard/notifications" });
   if (usersErr) issues.push({ text: usersErr, href: "/dashboard/settings" });

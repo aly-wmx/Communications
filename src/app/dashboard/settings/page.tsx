@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/PageHeader";
 import { requireAdminPage } from "@/lib/auth";
 import { slaFromJson } from "@/lib/comms/rows";
+import { ghlStatusLine, loadGhlHealth } from "@/lib/comms/ghl-health";
 import { createClient } from "@/lib/supabase/server";
 import { SlaForm } from "./SlaForm";
 import { SignInAccess } from "./SignInAccess";
@@ -10,12 +11,11 @@ import { NotificationRules } from "./NotificationRules";
 export default async function SettingsPage() {
   await requireAdminPage();
   const supabase = await createClient();
-  const [{ data: settings }, { data: team }, { data: sync }] = await Promise.all([
+  const [{ data: settings }, { data: team }, ghl] = await Promise.all([
     supabase.from("settings").select("sla, allowed_domains, blocked_emails, slack_channel_id, slack_channel_events, email_kinds, dm_kinds").eq("id", 1).maybeSingle(),
     supabase.from("team_members").select("id, name, escalation").order("name"),
-    supabase.from("integration_state").select("value").eq("key", "ghl_sync").maybeSingle(),
+    loadGhlHealth(supabase),
   ]);
-  const ghl = (sync?.value ?? {}) as { lastOkAt?: string; lastError?: string };
 
   return (
     <div className="space-y-6">
@@ -37,12 +37,22 @@ export default async function SettingsPage() {
         <div className="flex items-start justify-between gap-4 text-sm">
           <div>
             <p className="font-medium text-zinc-800">GoHighLevel</p>
-            <p className="text-xs text-zinc-500">Messages sync every minute; replies and new conversations send through GHL.</p>
+            <p className="text-xs text-zinc-500">
+              Messages sync every minute; replies and new conversations send through each business&apos;s own sub-account (set on the
+              Businesses page).
+            </p>
           </div>
-          <p className={`text-xs font-semibold ${ghl.lastOkAt && !ghl.lastError ? "text-[#3F7A5C]" : "text-amber-700"}`}>
-            {ghl.lastOkAt ? `Last synced ${new Date(ghl.lastOkAt).toLocaleString()}` : "Not synced yet"}
-            {ghl.lastError ? ` · ${ghl.lastError}` : ""}
-          </p>
+          <ul className="space-y-0.5 text-right">
+            {ghl.map((h) => {
+              const { text, ok } = ghlStatusLine(h);
+              return (
+                <li key={h.businessId} className={`text-xs font-semibold ${ok ? "text-[#3F7A5C]" : "text-amber-700"}`}>
+                  {ghl.length > 1 ? `${h.businessName}: ` : ""}
+                  {text}
+                </li>
+              );
+            })}
+          </ul>
         </div>
         <div className="flex items-start justify-between gap-4 text-sm">
           <div>

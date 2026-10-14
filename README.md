@@ -40,6 +40,8 @@ exist in `src/lib/comms` with tests; phases 2–4 build screens on top of them.
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase → Project Settings → API Keys → publishable key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → API Keys → secret key. Server only; used for invites and the GHL webhook. |
 | `GHL_WEBHOOK_SECRET` | A long random string; also goes in the GHL webhook URL. |
+| `GHL_LOCATION_ID`, `GHL_API_KEY` | The original GoHighLevel sub-account (Watermark) and its Private Integration token. |
+| `GHL_API_KEY_<location id>` | The token for any other business's sub-account, e.g. `GHL_API_KEY_ve9EPM428h8vShlRW1KT`. |
 
 ### Supabase Auth
 
@@ -52,11 +54,21 @@ exist in `src/lib/comms` with tests; phases 2–4 build screens on top of them.
 
 ### GoHighLevel
 
-Workflow → **Webhook** action →
+Each business has its own GoHighLevel sub-account. The first business uses
+`GHL_LOCATION_ID` + `GHL_API_KEY`. To connect another:
+
+1. In that sub-account, create a Private Integration token (conversations,
+   messages and contacts scopes).
+2. In Vercel, add it as `GHL_API_KEY_<location id>` and redeploy.
+3. On **Businesses**, enter the location ID for that business. The once-a-minute
+   sync then picks up its messages and copies its history, and replies go out
+   through that sub-account.
+
+Optional webhook for faster pickup: Workflow → **Webhook** action →
 `https://<vercel-address>/api/ghl/webhook?secret=<GHL_WEBHOOK_SECRET>`.
-Optional Custom Data: `event` = `inbound` (default), `outbound`, `call`,
-`missed_call` or `voicemail`; `message` = the text. Add `&business=<id>` to
-send a workflow's new clients to a business other than the first one.
+Optional Custom Data: `event` = `inbound` (default), `call`, `missed_call` or
+`voicemail`; `message` = the text. The business is the one connected to the
+sub-account that sent it (`&business=<id>` is the fallback).
 
 ## Development
 
