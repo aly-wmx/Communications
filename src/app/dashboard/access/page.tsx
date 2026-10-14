@@ -220,7 +220,7 @@ export default async function AccessPage({ searchParams }: PageProps<"/dashboard
                 {ROLES.map((r) => (
                   <th key={r} className={`w-28 px-2 py-2 text-center font-semibold ${r === role ? "bg-[#B08D57]/10 text-zinc-900" : ""}`}>
                     {ROLE_LABELS[r]}
-                    {r === role && <span className="block text-[10px] font-normal text-zinc-600">{self ? "you" : member.name}</span>}
+                    {r === role && <span className="block text-[11px] font-normal text-zinc-600">{self ? "you" : member.name}</span>}
                   </th>
                 ))}
               </tr>

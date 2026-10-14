@@ -25,7 +25,7 @@ export function SlackChannel({ channelId, connected }: { channelId: string; conn
           value={id}
           onChange={(e) => setId(e.target.value.trim())}
           placeholder="C0C7KR2UH9U"
-          className="mt-1 block w-56 rounded-md border border-zinc-300 px-3 py-1.5 font-mono text-sm uppercase focus:border-zinc-400 focus:outline-none"
+          className="mt-1 block w-56 rounded-md border border-zinc-300 px-3 py-1.5 font-mono text-base sm:text-sm uppercase focus:border-zinc-400 focus:outline-none"
         />
         <span className="mt-1 block text-[11px] text-zinc-500">In Slack: open the channel → channel name → About → Channel ID at the bottom.</span>
       </label>

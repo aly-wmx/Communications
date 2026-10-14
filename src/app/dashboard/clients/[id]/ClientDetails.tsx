@@ -61,14 +61,14 @@ export function ClientDetails({
     });
   }
 
-  const input = "w-full rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm focus:border-zinc-400 focus:outline-none";
+  const input = "w-full rounded-md border border-zinc-300 px-2.5 py-1.5 text-base sm:text-sm focus:border-zinc-400 focus:outline-none";
 
   return (
     <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Client</h2>
         {!editing && (
-          <button type="button" onClick={start} className="text-xs font-semibold text-[#B08D57] hover:underline">
+          <button type="button" onClick={start} className="text-xs font-semibold text-[#8A6A3A] hover:underline">
             ✎ Edit
           </button>
         )}
@@ -144,7 +144,7 @@ export function ClientDetails({
             ].map(([label, value]) => (
               <div key={label} className="flex gap-2">
                 <dt className="w-16 shrink-0 text-zinc-500">{label}</dt>
-                <dd className="min-w-0 break-words text-zinc-800">{value || <span className="text-zinc-400">—</span>}</dd>
+                <dd className="min-w-0 break-words text-zinc-800">{value || <span className="text-zinc-500">—</span>}</dd>
               </div>
             ))}
           </dl>

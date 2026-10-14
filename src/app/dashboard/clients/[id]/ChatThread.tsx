@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { RecordingPlayer } from "./RecordingPlayer";
 import { channelStyle, type Attachment } from "@/lib/comms/channels";
 import type { EmailMeta } from "@/lib/comms/email-meta";
+import { dayLabel as dayLabelIn, formatStamp } from "@/lib/format-time";
 
 export interface ChatMessage {
   id: string;
@@ -28,7 +29,7 @@ function EmailHeader({ meta, light }: { meta: EmailMeta; light: boolean }) {
   const row = (label: string, value: string) =>
     value ? (
       <p className="flex gap-1.5">
-        <span className={`w-11 shrink-0 ${light ? "text-white/60" : "text-zinc-400"}`}>{label}</span>
+        <span className={`w-11 shrink-0 ${light ? "text-white/60" : "text-zinc-500"}`}>{label}</span>
         <span className="min-w-0 break-words">{value}</span>
       </p>
     ) : null;
@@ -43,29 +44,11 @@ function EmailHeader({ meta, light }: { meta: EmailMeta; light: boolean }) {
   );
 }
 
-const fullDate = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
 const CALL_CHANNELS = new Set(["Call", "Missed call", "Voicemail"]);
 /** Messages from the same side within this gap share one bubble group. */
 const GROUP_GAP_MS = 5 * 60_000;
 
-const time = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-
-function dayLabel(iso: string) {
-  const d = new Date(iso);
-  const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
-  if (d.toDateString() === today.toDateString()) return "Today";
-  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: d.getFullYear() === today.getFullYear() ? undefined : "numeric",
-  });
-}
 
 function initials(name: string) {
   const parts = name.replace(/\(.*\)/, "").trim().split(/\s+/).filter(Boolean);
@@ -124,12 +107,18 @@ export function ChatThread({
   clientName,
   olderHref,
   newerHref,
+  timeZone,
 }: {
   messages: ChatMessage[];
   clientName: string;
   olderHref?: string;
   newerHref?: string;
+  /** The business's zone, so the server render and the browser print the same times. */
+  timeZone: string;
 }) {
+  const time = (iso: string) => formatStamp(iso, timeZone, "time");
+  const fullDate = (iso: string) => formatStamp(iso, timeZone, "full");
+  const dayLabel = (iso: string) => dayLabelIn(iso, timeZone);
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const lastId = useRef<string | undefined>(undefined);
@@ -173,7 +162,7 @@ export function ChatThread({
       >
         {olderHref && (
           <p className="mb-4 text-center">
-            <a href={olderHref} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#B08D57] shadow-sm hover:underline">
+            <a href={olderHref} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#8A6A3A] shadow-sm hover:underline">
               ↑ Load older messages
             </a>
           </p>
@@ -215,7 +204,7 @@ export function ChatThread({
                   {m.noteAuthor ? (
                     <div className="flex justify-center py-1.5">
                       <div className="w-full max-w-[85%] rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-[14px] shadow-sm">
-                        <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800" title={fullDate(m.occurredAt)}>
+                        <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800" title={fullDate(m.occurredAt)}>
                           🔒 Team note · {m.noteAuthor} · {time(m.occurredAt)}
                         </p>
                         {m.flaggedFor && (
@@ -261,7 +250,7 @@ export function ChatThread({
                       {!out && (
                         <span
                           aria-hidden
-                          className={`grid size-7 shrink-0 place-items-center rounded-full bg-[#1C2B47]/10 text-[10px] font-bold text-[#1C2B47] ${
+                          className={`grid size-7 shrink-0 place-items-center rounded-full bg-[#1C2B47]/10 text-[11px] font-bold text-[#1C2B47] ${
                             last ? "" : "invisible"
                           }`}
                         >
@@ -286,7 +275,7 @@ export function ChatThread({
                           {/* Every bubble says where it came from, so texts and emails are easy to tell apart. */}
                           <p className="mb-1">
                             <span
-                              className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                              className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
                                 out && !automated ? "bg-white/15 text-white" : channelStyle(m.channel).tag
                               }`}
                             >
@@ -309,7 +298,7 @@ export function ChatThread({
                           <Attachments messageId={m.id} items={m.attachments} light={out && !automated} />
                         </div>
                         {last && (
-                          <p className="mt-1 px-1 text-[10px] text-zinc-400" title={fullDate(m.occurredAt)}>
+                          <p className="mt-1 px-1 text-[11px] text-zinc-500" title={fullDate(m.occurredAt)}>
                             {m.sender && (
                               <span className={`font-semibold ${out && !automated ? "text-[#1C2B47]" : "text-zinc-500"}`}>{m.sender} · </span>
                             )}
@@ -328,7 +317,7 @@ export function ChatThread({
 
         {newerHref && (
           <p className="mt-4 text-center">
-            <a href={newerHref} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#B08D57] shadow-sm hover:underline">
+            <a href={newerHref} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#8A6A3A] shadow-sm hover:underline">
               Jump to latest ↓
             </a>
           </p>
@@ -342,7 +331,7 @@ export function ChatThread({
             scrollToBottom(true);
             setUnseen(false);
           }}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-[#B08D57] px-4 py-1.5 text-xs font-semibold text-white shadow-lg"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-[#8A6A3A] px-4 py-1.5 text-xs font-semibold text-white shadow-lg"
         >
           New messages ↓
         </button>

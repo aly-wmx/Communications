@@ -53,7 +53,7 @@ export function EditableTextCell({ value, onSave, placeholder, type = "text" }: 
     <div>
       <input
         type={type}
-        className={`w-full rounded border bg-transparent px-2 py-1 text-sm transition-colors hover:bg-zinc-100 focus:border-zinc-400 focus:bg-white focus:outline-none disabled:opacity-50 ${
+        className={`w-full rounded border bg-transparent px-2 py-1 text-base sm:text-sm transition-colors hover:bg-zinc-100 focus:border-zinc-400 focus:bg-white focus:outline-none disabled:opacity-50 ${
           saved ? "border-[#3F7A5C]" : "border-transparent"
         }`}
         value={draft}
@@ -100,7 +100,7 @@ export function EditableSelectCell({ value, options, onSave }: EditableSelectCel
   return (
     <div>
       <select
-        className={`w-full rounded border bg-transparent px-2 py-1 text-sm transition-colors hover:bg-zinc-100 focus:border-zinc-400 focus:bg-white focus:outline-none disabled:opacity-50 ${
+        className={`w-full rounded border bg-transparent px-2 py-1 text-base sm:text-sm transition-colors hover:bg-zinc-100 focus:border-zinc-400 focus:bg-white focus:outline-none disabled:opacity-50 ${
           saved ? "border-[#3F7A5C]" : "border-transparent"
         }`}
         value={current}

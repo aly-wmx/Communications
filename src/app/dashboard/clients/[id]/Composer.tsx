@@ -5,10 +5,11 @@ import { MentionTextarea } from "@/components/MentionTextarea";
 import { smsSegments } from "@/lib/comms/outbound";
 import { sendReply } from "../../messaging/actions";
 import { addTeamNote } from "../../team-chat/actions";
+import { onRadioKeys } from "@/lib/radio-keys";
 
 /**
  * Reply box: text or email to the client through GoHighLevel, or a team-only
- * note (yellow, never sent) with @mentions. Enter sends, Shift+Enter adds a line.
+ * note (yellow, never sent) with @mentions. Enter sends, Shift+Enter adds a line (on phones Enter is a new line; tap Send).
  */
 export function Composer({
   clientId,
@@ -58,11 +59,17 @@ export function Composer({
   return (
     <footer className={`border-t border-zinc-200 px-3 py-2.5 ${isNote ? "bg-amber-50" : "bg-white"}`}>
       <div className="mb-2 flex flex-wrap items-center gap-1 text-xs">
-        <div className="mr-2 flex rounded-full bg-zinc-100 p-0.5" role="radiogroup" aria-label="Who is this for">
+        <div
+          className="mr-2 flex rounded-full bg-zinc-100 p-0.5"
+          role="radiogroup"
+          aria-label="Who is this for"
+          onKeyDown={(e) => onRadioKeys(e, clientReachable ? (["client", "note"] as const) : (["note"] as const), isNote ? "note" : "client", setMode)}
+        >
           <button
             type="button"
             role="radio"
             aria-checked={!isNote}
+            tabIndex={!isNote ? 0 : -1}
             disabled={!clientReachable}
             title={clientReachable ? undefined : "This client has no phone number or email"}
             onClick={() => setMode("client")}
@@ -74,6 +81,7 @@ export function Composer({
             type="button"
             role="radio"
             aria-checked={isNote}
+            tabIndex={isNote ? 0 : -1}
             onClick={() => setMode("note")}
             className={`rounded-full px-2.5 py-0.5 font-semibold ${isNote ? "bg-amber-200 text-amber-950 shadow-sm" : "text-zinc-500"}`}
           >
@@ -97,7 +105,7 @@ export function Composer({
             </button>
           );
         })}
-        <span className="ml-auto text-zinc-400">
+        <span className="ml-auto text-zinc-500">
           {isNote
             ? "Only your team sees this · type @ to mention someone"
             : channel === "SMS" && message
@@ -133,7 +141,7 @@ export function Composer({
           placeholder="Subject"
           aria-label="Email subject"
           disabled={pending}
-          className="mb-2 w-full rounded-lg border border-zinc-200 px-3 py-1.5 text-sm focus:border-zinc-400 focus:outline-none"
+          className="mb-2 w-full rounded-lg border border-zinc-200 px-3 py-1.5 text-base sm:text-sm focus:border-zinc-400 focus:outline-none"
         />
       )}
 
@@ -148,7 +156,7 @@ export function Composer({
           placeholder={isNote ? "Note for the team… (@ to mention)" : channel === "SMS" ? "Type a text…" : "Write your email…"}
           aria-label={isNote ? "Team note" : "Message"}
           disabled={pending}
-          className={`max-h-40 min-h-[2.5rem] resize-none rounded-2xl border px-4 py-2 text-sm focus:outline-none ${
+          className={`max-h-40 min-h-[2.5rem] resize-none rounded-2xl border px-4 py-2 text-base sm:text-sm focus:outline-none ${
             isNote ? "border-amber-300 bg-white focus:border-amber-500" : "border-zinc-200 bg-[#F7F6F2] focus:border-zinc-400 focus:bg-white"
           }`}
         />
@@ -157,7 +165,7 @@ export function Composer({
           onClick={send}
           disabled={!ready}
           aria-label="Send"
-          className={`grid size-10 shrink-0 place-items-center rounded-full text-white shadow-sm hover:brightness-110 disabled:opacity-40 ${isNote ? "bg-amber-500" : "bg-[#B08D57]"}`}
+          className={`grid size-10 shrink-0 place-items-center rounded-full text-white shadow-sm hover:brightness-110 disabled:opacity-40 ${isNote ? "bg-amber-600" : "bg-[#8A6A3A]"}`}
         >
           {pending ? "…" : "➤"}
         </button>
@@ -167,7 +175,7 @@ export function Composer({
           {error}
         </p>
       )}
-      <p className="mt-1 text-[10px] text-zinc-400">Enter to send · Shift+Enter for a new line</p>
+      <p className="mt-1 hidden text-xs text-zinc-500 [@media(pointer:fine)]:block">Enter to send · Shift+Enter for a new line</p>
     </footer>
   );
 }

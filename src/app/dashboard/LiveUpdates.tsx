@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { incomingAlert, type AlertRow, type IncomingAlert } from "@/lib/comms/alerts";
+import { alertIsForMe, incomingAlert, type AlertRow, type IncomingAlert } from "@/lib/comms/alerts";
+import type { Department } from "@/lib/stages";
 import { NotificationBell } from "./NotificationBell";
+import { conversationHref } from "@/lib/links";
 
 export interface Toast extends IncomingAlert {
   clientName: string;
@@ -82,11 +84,14 @@ export function LiveUpdates({
   teamNames,
   businessNames,
   currentBusinessId,
+  myDepartment,
 }: {
   meId: string;
   teamNames: Record<string, string>;
   businessNames: Record<string, string>;
   currentBusinessId: string;
+  /** Unassigned items outside it arrive quietly (see alertIsForMe). */
+  myDepartment: Department | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -101,10 +106,10 @@ export function LiveUpdates({
   const seen = useRef(new Set<string>());
   const refreshTimer = useRef<number | undefined>(undefined);
   // Latest props for the realtime callbacks, without resubscribing on every render.
-  const props = useRef({ meId, teamNames, businessNames, currentBusinessId, sound });
+  const props = useRef({ meId, teamNames, businessNames, currentBusinessId, myDepartment, sound });
   useEffect(() => {
-    props.current = { meId, teamNames, businessNames, currentBusinessId, sound };
-  }, [meId, teamNames, businessNames, currentBusinessId, sound]);
+    props.current = { meId, teamNames, businessNames, currentBusinessId, myDepartment, sound };
+  }, [meId, teamNames, businessNames, currentBusinessId, myDepartment, sound]);
 
   const dismiss = useCallback((key: string) => setToasts((list) => list.filter((t) => t.key !== key)), []);
   /** Timed close: skipped once someone is reading it. */
@@ -133,7 +138,7 @@ export function LiveUpdates({
 
       // The contact only carries a shortened preview; show the client's full latest message.
       const [{ data: client }, { data: latest }] = await Promise.all([
-        supabase.from("clients").select("name, business_id").eq("id", alert.clientId).maybeSingle(),
+        supabase.from("clients").select("name, business_id, stage").eq("id", alert.clientId).maybeSingle(),
         supabase
           .from("messages")
           .select("body")
@@ -144,13 +149,20 @@ export function LiveUpdates({
           .maybeSingle(),
       ]);
       const p = props.current;
+      // Someone else's item, another department or another business: the badges update, but no pop-up or chime.
+      const forMe = alertIsForMe(
+        alert,
+        { businessId: client?.business_id ?? p.currentBusinessId, stage: client?.stage ?? null },
+        { id: p.meId, department: p.myDepartment, currentBusinessId: p.currentBusinessId },
+      );
+      if (!forMe) return;
       const clientName = client?.name ?? "A client";
       const businessName =
         client && client.business_id !== p.currentBusinessId ? (p.businessNames[client.business_id] ?? "") : "";
       const preview = alert.body.replace(/…$/, "");
       // Only swap in the full text when it's clearly the same message (calls and voicemails have no preview to match).
       const body = latest?.body && preview && latest.body.startsWith(preview.slice(0, 40)) ? latest.body : alert.body;
-      const toast: Toast = { ...alert, body, clientName, businessName, link: `/dashboard/clients/${alert.clientId}`, at: new Date().toISOString() };
+      const toast: Toast = { ...alert, body, clientName, businessName, link: conversationHref(alert.clientId), at: new Date().toISOString() };
 
       setToasts((list) => [toast, ...list].slice(0, 4));
       window.setTimeout(() => expire(alert.key), alert.urgent ? 30_000 : 15_000);
@@ -163,7 +175,7 @@ export function LiveUpdates({
         });
         n.onclick = () => {
           window.focus();
-          router.push("/dashboard/inbox?view=waiting");
+          router.push(conversationHref(alert.clientId));
           n.close();
         };
       }
@@ -178,13 +190,13 @@ export function LiveUpdates({
 
       channel
         .on("postgres_changes", { event: "*", schema: "public", table: "contacts" }, (payload) => {
-          refreshSoon(1000);
+          refreshSoon(2500);
           if (payload.eventType === "DELETE") return;
           const p = props.current;
           const alert = incomingAlert(payload.eventType, payload.new as AlertRow, p.meId, p.teamNames);
           if (alert) void alertFor(alert);
         })
-        .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, () => refreshSoon(1000))
+        .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, () => refreshSoon(2500))
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, refreshForMessages)
         .on("postgres_changes", { event: "*", schema: "public", table: "team_notes" }, refreshForMessages)
         .subscribe((status) => {
@@ -215,6 +227,7 @@ export function LiveUpdates({
         key: n.id,
         contactId: "",
         clientId: "",
+        assigneeId: "",
         urgent: n.urgent,
         headline: NOTIFICATION_LABEL[n.kind],
         body: n.body,
@@ -274,18 +287,19 @@ export function LiveUpdates({
             <button
               type="button"
               onClick={enableDesktop}
-              className="font-semibold text-[#B08D57] underline-offset-2 hover:underline"
+              className="font-semibold text-[#8A6A3A] underline-offset-2 hover:underline"
             >
               Turn on desktop alerts
             </button>
           )}
-          {permission === "denied" && <span className="text-zinc-400">Desktop alerts blocked in browser</span>}
+          {permission === "denied" && <span className="text-zinc-500">Desktop alerts blocked in browser</span>}
         </div>
       </div>
 
       <div
         aria-live="polite"
-        className="pointer-events-none fixed inset-x-4 top-4 z-50 flex flex-col gap-2 sm:left-auto sm:right-4 sm:w-[26rem]"
+        // Phones: at the bottom, clear of the sticky header and the menu button.
+        className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex flex-col-reverse gap-2 sm:bottom-auto sm:left-auto sm:right-4 sm:top-4 sm:w-[26rem] sm:flex-col"
       >
         {toasts.map((t) => (
           <ToastCard key={t.key} toast={t} onPin={() => pin(t.key)} onDismiss={() => dismiss(t.key)} />

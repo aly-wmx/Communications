@@ -57,7 +57,7 @@ export function ColumnChart({ title, subtitle, points, max, unit }: { title: str
             {/* Recessive guides at 0, 50% and 100% of the scale */}
             {[0, 0.5, 1].map((g) => (
               <div key={g} className="absolute inset-x-0 border-t border-zinc-100" style={{ bottom: `${g * 100}%` }}>
-                <span className="absolute -top-2.5 right-0 bg-white pl-1 text-[10px] tabular-nums text-zinc-400">
+                <span className="absolute -top-2.5 right-0 bg-white pl-1 text-[11px] tabular-nums text-zinc-500">
                   {max === 100 ? `${Math.round(g * 100)}%` : Math.round(g * top)}
                 </span>
               </div>
@@ -102,7 +102,7 @@ export function ColumnChart({ title, subtitle, points, max, unit }: { title: str
               ))}
             </div>
           </div>
-          <div className="right-8 mt-1 flex justify-between pr-8 text-[10px] text-zinc-400">
+          <div className="right-8 mt-1 flex justify-between pr-8 text-[11px] text-zinc-500">
             <span>{points[0].label}</span>
             {points.length > 1 && <span>{points[last].label}</span>}
           </div>

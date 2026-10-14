@@ -36,19 +36,19 @@ export function EmailParticipants({
               <a href={`mailto:${p.email}`} className="block truncate text-xs text-[#1C2B47] underline-offset-2 hover:underline">
                 {p.email}
               </a>
-              <span className="text-[10px] text-zinc-400">
+              <span className="text-[11px] text-zinc-500">
                 {p.email === clientEmail.toLowerCase() ? "client · " : ""}
                 on {p.count} email{p.count === 1 ? "" : "s"}
               </span>
             </span>
-            <button type="button" onClick={() => void copy(p.email)} className="shrink-0 text-[11px] font-semibold text-[#B08D57] hover:underline">
+            <button type="button" onClick={() => void copy(p.email)} className="shrink-0 text-[11px] font-semibold text-[#8A6A3A] hover:underline">
               {copied === p.email ? "Copied" : "Copy"}
             </button>
           </li>
         ))}
       </ul>
       {people.length > 6 && (
-        <button type="button" onClick={() => setShowAll((s) => !s)} className="mt-2 text-xs font-semibold text-[#B08D57] hover:underline">
+        <button type="button" onClick={() => setShowAll((s) => !s)} className="mt-2 text-xs font-semibold text-[#8A6A3A] hover:underline">
           {showAll ? "Show fewer" : `Show all ${people.length}`}
         </button>
       )}

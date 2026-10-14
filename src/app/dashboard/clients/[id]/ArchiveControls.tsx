@@ -38,7 +38,7 @@ export function ArchiveControls({
       <section className="rounded-xl border border-zinc-300 bg-zinc-100 p-4">
         <p className="text-sm font-semibold text-zinc-800">{archivedReason === "spam" ? "🚫 Marked as spam" : "🗄 Archived"}</p>
         <p className="mt-0.5 text-xs text-zinc-600">
-          {archivedLabel} New messages are kept here but won&apos;t reopen the queue or alert anyone.
+          {archivedLabel} New messages are kept here but won&apos;t show as waiting in the Inbox or alert anyone.
         </p>
         <button
           type="button"

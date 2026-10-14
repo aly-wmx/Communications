@@ -16,7 +16,7 @@ export function ComingSoon({
     <div className="space-y-6">
       <PageHeader title={title} description={description} />
       <div className="max-w-2xl rounded-lg border border-dashed border-zinc-300 bg-white p-6">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#B08D57]">Coming in phase {phase}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8A6A3A]">Coming in phase {phase}</p>
         <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-zinc-700">
           {features.map((f) => (
             <li key={f}>{f}</li>

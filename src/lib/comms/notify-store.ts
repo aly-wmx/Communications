@@ -8,6 +8,7 @@ import { contactFromRow, contactPatch, slaFromJson } from "./rows";
 import { needsEscalation, slaState } from "./sla";
 import type { ClientContact, SlaSettings, TeamMember } from "./types";
 import type { Json } from "@/lib/supabase/database.types";
+import { conversationHref } from "@/lib/links";
 
 /** Saving, sending and scheduling notifications. Server only (service role). */
 
@@ -61,7 +62,7 @@ export async function saveNotifications(
 ): Promise<number> {
   if (!planned.length) return 0;
   const rules = about.alwaysSend ? null : await deliveryRules(sb);
-  const link = about.link ?? (about.clientId ? `/dashboard/inbox?view=all&dept=all&c=${about.clientId}` : "/dashboard/inbox");
+  const link = about.link ?? (about.clientId ? conversationHref(about.clientId) : "/dashboard/inbox");
   const { error } = await sb.from("notifications").insert(
     planned.map((p) => ({
       recipient_id: p.recipientId,

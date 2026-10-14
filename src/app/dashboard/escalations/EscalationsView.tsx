@@ -8,9 +8,11 @@ import { channelStyle } from "@/lib/comms/channels";
 import { queueAction } from "../queue/actions";
 import { acknowledgeEscalation } from "./actions";
 import { EscalateButton, type EscalationMember } from "./EscalateButton";
+import { conversationHref } from "@/lib/links";
 
 export type Stage = "needs" | "awaiting" | "picked" | "resolved";
-export type View = "table" | "kanban";
+/** "auto": nobody picked one, so phones get the board and wider screens the (wide) table. */
+export type View = "table" | "kanban" | "auto";
 
 const STAGES: { key: Stage; title: string; hint: string; tone: string }[] = [
   { key: "needs", title: "Past target", hint: "Over the escalation time, not escalated yet.", tone: "bg-amber-500" },
@@ -220,7 +222,7 @@ export function EscalationsView({
             return (
               <tr key={c.id} className={`align-top ${busy === c.id ? "opacity-60" : ""}`}>
                 <td className="max-w-[260px] px-3 py-2.5">
-                  <Link href={`/dashboard/clients/${c.clientId}`} className="font-semibold text-zinc-900 hover:text-[#B08D57] hover:underline">
+                  <Link href={conversationHref(c.clientId)} className="font-semibold text-zinc-900 hover:text-[#8A6A3A] hover:underline">
                     {clientName(c)}
                   </Link>
                   {c.priority === "Urgent" && <span className="ml-2 rounded bg-red-100 px-1.5 text-[11px] text-red-700">Urgent</span>}
@@ -327,9 +329,9 @@ export function EscalationsView({
                 >
                   <p className="flex items-start gap-2">
                     <Link
-                      href={`/dashboard/clients/${c.clientId}`}
+                      href={conversationHref(c.clientId)}
                       draggable={false}
-                      className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900 hover:text-[#B08D57] hover:underline"
+                      className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900 hover:text-[#8A6A3A] hover:underline"
                     >
                       {clientName(c)}
                     </Link>
@@ -347,7 +349,7 @@ export function EscalationsView({
                   <div className="mt-2 flex items-center justify-between gap-2">
                     {moveSelect(c, s.key)}
                     <Link
-                      href={`/dashboard/clients/${c.clientId}`}
+                      href={conversationHref(c.clientId)}
                       draggable={false}
                       className="text-xs font-semibold text-[#8A6A3A] hover:underline"
                     >
@@ -370,10 +372,22 @@ export function EscalationsView({
           {error}
         </p>
       )}
-      {view === "kanban" && (
-        <p className="text-xs text-zinc-500">Drag a card to another column, or use “Move to…” on the card.</p>
+      {view === "auto" ? (
+        <>
+          <div className="space-y-2 md:hidden">
+            <p className="text-xs text-zinc-500">Use “Move to…” on a card to change its column.</p>
+            {board}
+          </div>
+          <div className="hidden md:block">{table}</div>
+        </>
+      ) : (
+        <>
+          {view === "kanban" && (
+            <p className="text-xs text-zinc-500">Drag a card to another column, or use “Move to…” on the card.</p>
+          )}
+          {view === "kanban" ? board : table}
+        </>
       )}
-      {view === "kanban" ? board : table}
       {escalating && (
         <EscalateButton
           key={escalating.id}

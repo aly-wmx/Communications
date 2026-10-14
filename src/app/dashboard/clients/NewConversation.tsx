@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { searchClients, startConversation, type ClientPick } from "../messaging/actions";
+import { conversationHref } from "@/lib/links";
 
 /** "+ New conversation": message an existing client, or a new person (created as a GHL contact). */
 export function NewConversation() {
@@ -53,11 +54,11 @@ export function NewConversation() {
       const result = await startConversation(payload);
       if (!result.ok) return setError(result.error);
       close();
-      router.push(`/dashboard/clients/${result.clientId}`);
+      router.push(conversationHref(result.clientId));
     });
   }
 
-  const input = "w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm focus:border-zinc-400 focus:outline-none";
+  const input = "w-full rounded-md border border-zinc-300 px-3 py-1.5 text-base sm:text-sm focus:border-zinc-400 focus:outline-none";
 
   return (
     <>
@@ -77,7 +78,7 @@ export function NewConversation() {
         <form onSubmit={submit} className="space-y-4 p-5">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold text-zinc-900">New conversation</h2>
-            <button type="button" onClick={close} aria-label="Close" className="text-xl text-zinc-400 hover:text-zinc-700">
+            <button type="button" onClick={close} aria-label="Close" className="text-xl text-zinc-500 hover:text-zinc-700">
               ×
             </button>
           </div>
@@ -109,7 +110,7 @@ export function NewConversation() {
                   <p className="font-semibold text-zinc-900">{picked.name}</p>
                   <p className="text-xs text-zinc-500">{picked.detail || "No contact details"}</p>
                 </div>
-                <button type="button" onClick={() => setPicked(null)} className="text-xs font-semibold text-[#B08D57] hover:underline">
+                <button type="button" onClick={() => setPicked(null)} className="text-xs font-semibold text-[#8A6A3A] hover:underline">
                   Change
                 </button>
               </div>
@@ -198,7 +199,7 @@ export function NewConversation() {
             <button
               type="submit"
               disabled={pending || !message.trim()}
-              className="rounded-md bg-[#B08D57] px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-50"
+              className="rounded-md bg-[#8A6A3A] px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-50"
             >
               {pending ? "Sending…" : "Send"}
             </button>

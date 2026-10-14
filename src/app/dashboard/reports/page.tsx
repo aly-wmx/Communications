@@ -8,6 +8,7 @@ import { buildReport, REPORT_RANGES, type ReportRange } from "@/lib/comms/report
 import { formatMinutes } from "@/lib/comms/sla";
 import { createClient } from "@/lib/supabase/server";
 import { BarList, ColumnChart } from "./Charts";
+import { NoBusiness } from "@/components/NoBusiness";
 
 const MAX_WEEKS = 16;
 const mins = (m: number | null) => (m == null ? "—" : formatMinutes(m));
@@ -26,7 +27,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/dashboar
   const sp = await searchParams;
   const range = (typeof sp.range === "string" && sp.range in REPORT_RANGES ? sp.range : "30d") as ReportRange;
   const [{ current }, me] = await Promise.all([getBusinessContext(), getSessionMember()]);
-  if (!current) return null;
+  if (!current) return <NoBusiness />;
   const exportable = me ? canExport(me.role) : false;
 
   const [{ contacts, sla }, { data: team }] = await Promise.all([

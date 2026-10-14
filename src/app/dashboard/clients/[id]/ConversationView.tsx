@@ -1,4 +1,3 @@
-import { notFound } from "next/navigation";
 import { getSessionMember } from "@/lib/auth";
 import { canSendMessages } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
@@ -14,12 +13,11 @@ import { ContactActions, type OpenContact } from "./ContactActions";
 import { StagePicker } from "./StagePicker";
 import { isStage } from "@/lib/stages";
 import { resolveGhlAccounts } from "@/lib/comms/ghl-accounts";
+import { formatStamp } from "@/lib/format-time";
+import { businessTimeZone } from "@/lib/time-zone";
 
 const PAGE_SIZE = 300;
 
-function when(iso: string) {
-  return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
 
 function initials(name: string) {
   const parts = name.replace(/\(.*\)/, "").trim().split(/\s+/).filter(Boolean);
@@ -62,7 +60,17 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
       .order("received_at"),
     supabase.from("team_members").select("id, name, escalation").order("name"),
   ]);
-  if (!client) notFound();
+  // Deleted, or an old link: say so in the conversation pane, keeping the Inbox list beside it.
+  if (!client) {
+    return (
+      <div className="grid flex-1 place-items-center rounded-xl border border-zinc-200 bg-white p-8 text-center shadow-sm">
+        <div>
+          <p className="font-semibold text-zinc-900">This conversation isn&apos;t here anymore</p>
+          <p className="mt-1 text-sm text-zinc-600">The client may have been deleted. Pick another conversation.</p>
+        </div>
+      </div>
+    );
+  }
   // Everyone on this client's emails (all of them, not just the page shown), minus our own addresses.
   const [{ data: allEmailMeta }, { data: accessSettings }, { data: teamEmails }] = await Promise.all([
     supabase.from("messages").select("email_meta").eq("client_id", id).eq("channel", "Email").not("email_meta", "is", null).limit(500),
@@ -141,6 +149,8 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
       ? `https://app.gohighlevel.com/v2/location/${locationId}/conversations/conversations/${conversationId}`
       : "";
 
+  const tz = await businessTimeZone();
+  const when = (iso: string) => formatStamp(iso, tz);
   const nameOf = (id?: string) => (team ?? []).find((t) => t.id === id)?.name ?? "someone";
   const openContacts: OpenContact[] = (open ?? []).map((c) => {
     const escalations = (c.escalations as Array<{ acknowledgedById?: string; acknowledgedAt?: string }> | null) ?? [];
@@ -159,7 +169,8 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
   const waiting = openContacts.some((c) => c.status === "Open");
 
   return (
-      <div className="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row">
+      // Below xl the side panel sits under the chat: scroll the two as one column rather than squeezing each into its own.
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto xl:flex-row xl:overflow-visible">
         {/* Chat box */}
         <section className="flex min-h-[28rem] flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
           <header className="flex flex-wrap items-center gap-3 border-b border-zinc-200 px-4 py-3">
@@ -169,7 +180,15 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
             <div className="min-w-0 flex-1">
               <h1 className="flex flex-wrap items-center gap-2 truncate text-base font-semibold text-zinc-900">
                 {client.name}
-                {waiting && <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700">Waiting on us</span>}
+                {waiting && (
+                  <>
+                    <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700">Waiting on us</span>
+                    {/* Below xl the Resolve / Escalate / Assign panel is under the chat. */}
+                    <a href="#item-actions" className="text-xs font-semibold text-[#8A6A3A] hover:underline xl:hidden">
+                      Actions ↓
+                    </a>
+                  </>
+                )}
               </h1>
               <p className="truncate text-xs text-zinc-500">
                 {[client.phone, client.email].filter(Boolean).join(" · ") || "No contact details"} · {total.toLocaleString()} message
@@ -190,7 +209,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
                   href={ghlHref}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-full bg-[#B08D57] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110"
+                  className="rounded-full bg-[#8A6A3A] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110"
                 >
                   Reply in GoHighLevel ↗
                 </a>
@@ -198,7 +217,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
             </div>
           </header>
 
-          <ChatThread messages={messages} clientName={client.name} olderHref={olderHref} newerHref={newerHref} />
+          <ChatThread messages={messages} clientName={client.name} olderHref={olderHref} newerHref={newerHref} timeZone={tz} />
 
           {me && (
             <Composer
@@ -212,13 +231,23 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
         </section>
 
         {/* Side panel */}
-        <aside className="w-full shrink-0 space-y-4 overflow-y-auto xl:w-80">
+        <aside className="w-full shrink-0 space-y-4 xl:w-80 xl:overflow-y-auto">
+          {/* What's waiting comes first: it's what people open a conversation to act on. */}
+          <div id="item-actions" className="scroll-mt-4">
+            {openContacts.length > 0 ? (
+              <ContactActions contacts={openContacts} team={team ?? []} meId={me?.memberId ?? ""} clientName={client.name} />
+            ) : (
+              <section className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 shadow-sm">
+                Nothing waiting on us for this client.
+              </section>
+            )}
+          </div>
           <StagePicker
             key={client.stage ?? "none"}
             clientId={client.id}
             stage={isStage(client.stage) ? client.stage : null}
             history={(stageHistory ?? []).map(
-              (h) => `${h.to_stage ?? "No stage"} · ${nameOf(h.changed_by)} · ${new Date(h.changed_at).toLocaleDateString()}`,
+              (h) => `${h.to_stage ?? "No stage"} · ${nameOf(h.changed_by)} · ${formatStamp(h.changed_at, tz, "date")}`,
             )}
           />
           <ClientDetails
@@ -242,17 +271,10 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
             clientName={client.name}
             archivedReason={(client.archive_reason as "spam" | "archived" | null) ?? null}
             archivedLabel={
-              client.archived_at ? `By ${nameOf(client.archived_by)} on ${new Date(client.archived_at).toLocaleDateString()}.` : ""
+              client.archived_at ? `By ${nameOf(client.archived_by)} on ${formatStamp(client.archived_at, tz, "date")}.` : ""
             }
           />
 
-          {openContacts.length > 0 ? (
-            <ContactActions contacts={openContacts} team={team ?? []} meId={me?.memberId ?? ""} clientName={client.name} />
-          ) : (
-            <section className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 shadow-sm">
-              Nothing waiting on us for this client.
-            </section>
-          )}
         </aside>
       </div>
   );

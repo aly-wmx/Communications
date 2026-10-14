@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { EditableTextCell } from "@/components/EditableCell";
 import type { Business } from "@/lib/business";
 import { addBusiness, updateBusinessField } from "./actions";
+import { onRadioKeys } from "@/lib/radio-keys";
 
 /** What the Businesses page shows about a business's GoHighLevel sub-account (worked out on the server; no tokens). */
 export interface GhlConnection {
@@ -20,13 +21,14 @@ const SWATCHES = ["#1C2B47", "#2B4438", "#B08D57", "#7A2E3A", "#3F5E8C", "#5B4B8
 
 function ColorPicker({ value, onChange, disabled }: { value: string; onChange: (c: string) => void; disabled?: boolean }) {
   return (
-    <div className="flex gap-1.5" role="radiogroup" aria-label="Colour">
+    <div className="flex gap-1.5" role="radiogroup" aria-label="Colour" onKeyDown={(e) => !disabled && onRadioKeys(e, SWATCHES, value, onChange)}>
       {SWATCHES.map((c) => (
         <button
           key={c}
           type="button"
           role="radio"
           aria-checked={value === c}
+          tabIndex={value === c ? 0 : -1}
           aria-label={c}
           disabled={disabled}
           onClick={() => onChange(c)}

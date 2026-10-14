@@ -41,7 +41,7 @@ function LoginForm() {
       )}
 
       <GoogleButton remember={remember} />
-      <div className="flex items-center gap-3 text-xs text-zinc-400">
+      <div className="flex items-center gap-3 text-xs text-zinc-500">
         <span className="h-px flex-1 bg-zinc-200" />
         or
         <span className="h-px flex-1 bg-zinc-200" />
@@ -78,7 +78,7 @@ function LoginForm() {
           className="size-4 accent-[#1C2B47]"
         />
         Stay signed in
-        <span className="text-xs text-zinc-400">— untick on shared computers</span>
+        <span className="text-xs text-zinc-500">— untick on shared computers</span>
       </label>
 
       {state.error && (

@@ -8,6 +8,8 @@ import { formatMinutes } from "@/lib/comms/sla";
 import { loadGhlHealth } from "@/lib/comms/ghl-health";
 import { createClient } from "@/lib/supabase/server";
 import { BarList, ColumnChart } from "./reports/Charts";
+import { NoBusiness } from "@/components/NoBusiness";
+import { conversationHref } from "@/lib/links";
 
 const mins = (m: number | null) => (m == null ? "—" : formatMinutes(m));
 
@@ -23,7 +25,7 @@ function StatCard({ href, label, value, hint, tone = "neutral" }: { href: string
       <p className="text-xs font-medium text-zinc-500">{label}</p>
       <p className={`mt-1 text-3xl font-semibold tabular-nums ${tone === "alert" ? "text-red-700" : "text-zinc-900"}`}>{value}</p>
       {hint && <p className="mt-0.5 text-xs text-zinc-500">{hint}</p>}
-      <p className="mt-2 text-[11px] font-semibold text-[#B08D57] opacity-0 transition-opacity group-hover:opacity-100">View →</p>
+      <p className="mt-2 text-[11px] font-semibold text-[#8A6A3A] opacity-0 transition-opacity group-hover:opacity-100">View →</p>
     </Link>
   );
 }
@@ -43,7 +45,8 @@ function Section({ title, action, children }: { title: string; action?: React.Re
 export default async function OverviewPage() {
   const me = await getSessionMember();
   const { current } = await getBusinessContext();
-  if (!me || !current) return null;
+  if (!me) return null;
+  if (!current) return <NoBusiness />;
 
   const supabase = await createClient();
   const { contacts, sla } = await loadQueue(current.id);
@@ -137,7 +140,7 @@ export default async function OverviewPage() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         {/* 3. Needs attention now */}
-        <Section title="Needs attention now" action={<Link href="/dashboard/inbox?view=waiting&dept=all&sort=waiting" className="text-xs font-semibold text-[#B08D57] hover:underline">See all →</Link>}>
+        <Section title="Needs attention now" action={<Link href="/dashboard/inbox?view=waiting&dept=all&sort=waiting" className="text-xs font-semibold text-[#8A6A3A] hover:underline">See all →</Link>}>
           {o.attention.length === 0 ? (
             <p className="rounded-lg border border-zinc-200 bg-white p-6 text-center text-sm text-zinc-500">Nobody is waiting on a reply. 🎉</p>
           ) : (
@@ -145,14 +148,14 @@ export default async function OverviewPage() {
               {o.attention.map((a) => (
                 <li key={a.contactId}>
                   <Link
-                    href={`/dashboard/inbox?view=all&dept=all&c=${a.clientId}`}
+                    href={conversationHref(a.clientId)}
                     className={`flex items-center gap-3 border-l-4 px-4 py-3 hover:bg-zinc-50 ${a.escalated || a.overdue ? "border-red-600" : "border-amber-400"}`}
                   >
                     <div className="min-w-0 flex-1">
                       <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-zinc-900">
                         {clientName(a.clientId)}
-                        {a.escalated && <span className="rounded-full bg-red-600 px-1.5 text-[10px] text-white">Escalated</span>}
-                        {a.urgent && <span className="rounded bg-red-100 px-1.5 text-[10px] text-red-700">Urgent</span>}
+                        {a.escalated && <span className="rounded-full bg-red-600 px-1.5 text-[11px] text-white">Escalated</span>}
+                        {a.urgent && <span className="rounded bg-red-100 px-1.5 text-[11px] text-red-700">Urgent</span>}
                       </p>
                       <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-zinc-500">
                         <ChannelTag channel={a.channel} />
@@ -171,7 +174,7 @@ export default async function OverviewPage() {
         </Section>
 
         {/* 4. This week vs last week */}
-        <Section title="This week vs last week" action={<Link href="/dashboard/reports?range=7d" className="text-xs font-semibold text-[#B08D57] hover:underline">Reports →</Link>}>
+        <Section title="This week vs last week" action={<Link href="/dashboard/reports?range=7d" className="text-xs font-semibold text-[#8A6A3A] hover:underline">Reports →</Link>}>
           <div className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 bg-white">
             {[
               { label: "Median first response", value: mins(o.week.medianFirstResponse.current), change: frt },
@@ -284,7 +287,7 @@ async function AdminHealth({
             <li key={i.text}>
               <Link href={i.href} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-amber-900 hover:bg-amber-50">
                 <span>⚠ {i.text}</span>
-                <span className="shrink-0 text-xs font-semibold text-[#B08D57]">Fix →</span>
+                <span className="shrink-0 text-xs font-semibold text-[#8A6A3A]">Fix →</span>
               </Link>
             </li>
           ))}

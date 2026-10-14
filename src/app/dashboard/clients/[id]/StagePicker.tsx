@@ -33,7 +33,7 @@ export function StagePicker({ clientId, stage, history }: { clientId: string; st
         value={value ?? ""}
         disabled={pending}
         onChange={(e) => change((e.target.value || null) as Stage | null)}
-        className={`mt-2 w-full rounded-md border border-zinc-200 px-2.5 py-1.5 text-sm font-semibold ${value ? STAGE_STYLE[value] : "bg-white text-zinc-500"}`}
+        className={`mt-2 w-full rounded-md border border-zinc-200 px-2.5 py-1.5 text-base sm:text-sm font-semibold ${value ? STAGE_STYLE[value] : "bg-white text-zinc-500"}`}
       >
         <option value="">No stage yet</option>
         {STAGES.map((s) => (

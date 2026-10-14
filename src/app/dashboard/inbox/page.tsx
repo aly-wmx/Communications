@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ChannelTag } from "@/components/ChannelTag";
 import { getSessionMember } from "@/lib/auth";
 import { getBusinessContext } from "@/lib/business";
-import { awaitingPickup } from "@/lib/comms/contacts";
+import { awaitingPickup, needsMe } from "@/lib/comms/contacts";
 import { loadQueue } from "@/lib/comms/load";
 import { formatMinutes, needsEscalation, slaState } from "@/lib/comms/sla";
 import type { ClientContact } from "@/lib/comms/types";
@@ -11,6 +11,8 @@ import { createClient } from "@/lib/supabase/server";
 import { ConversationView } from "../clients/[id]/ConversationView";
 import { NewConversation } from "../clients/NewConversation";
 import { canSendMessages } from "@/lib/roles";
+import { NoBusiness } from "@/components/NoBusiness";
+import { formatStamp } from "@/lib/format-time";
 
 const VIEWS = [
   ["mine", "Needs me"],
@@ -36,27 +38,30 @@ function initials(name: string) {
   return ((parts[0]?.[0] ?? "?") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }
 
-function shortAgo(iso: string | null, now: Date) {
+function shortAgo(iso: string | null, now: Date, tz: string) {
   if (!iso) return "";
   const m = Math.max(0, Math.floor((now.getTime() - new Date(iso).getTime()) / 60_000));
   if (m < 60) return `${m || 1}m`;
   if (m < 1440) return `${Math.floor(m / 60)}h`;
   if (m < 10080) return `${Math.floor(m / 1440)}d`;
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return formatStamp(iso, tz, "day");
 }
 
 export default async function InboxPage({ searchParams }: PageProps<"/dashboard/inbox">) {
   const sp = await searchParams;
   const me = await getSessionMember();
   const { current } = await getBusinessContext();
-  if (!me || !current) return null;
+  if (!me) return null;
+  if (!current) return <NoBusiness />;
 
   const supabase = await createClient();
   const { data: myRow } = await supabase.from("team_members").select("department").eq("id", me.memberId).maybeSingle();
 
   const view: View = VIEWS.some(([k]) => k === sp.view) ? (sp.view as View) : "mine";
   // Department: explicit choice, else the person's home department; "all" shows everything.
-  const deptParam = typeof sp.dept === "string" ? sp.dept : isDepartment(myRow?.department) ? myRow!.department : "all";
+  // "Needs me" defaults to every department: your own work shouldn't hide, and it matches the sidebar badge.
+  const deptParam =
+    typeof sp.dept === "string" ? sp.dept : view !== "mine" && isDepartment(myRow?.department) ? myRow!.department : "all";
   const dept: Department | "all" = isDepartment(deptParam) ? deptParam : "all";
   const stage = isStage(sp.stage) ? sp.stage : "";
   const q = typeof sp.q === "string" ? sp.q.trim().slice(0, 80) : "";
@@ -78,8 +83,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
   const byClient = new Map<string, ClientContact[]>();
   for (const c of contacts) if (c.status !== "Resolved") byClient.set(c.clientId, [...(byClient.get(c.clientId) ?? []), c]);
 
-  const isMine = (list: ClientContact[]) =>
-    list.some((c) => c.status === "Open" && (c.assigneeId === me.memberId || (!c.assigneeId && me.role === "coordinator")));
+  const isMine = (list: ClientContact[]) => list.some((c) => needsMe(c, me));
   const viewIds = (fn: (list: ClientContact[]) => boolean) => [...byClient.entries()].filter(([, l]) => fn(l)).map(([id]) => id);
   const idsFor: Record<View, string[] | null> = {
     mine: viewIds(isMine),
@@ -126,16 +130,21 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
     sort === "waiting"
       ? (a: ListRow, b: ListRow) => (oldestOpen.get(a.id) ?? "9999").localeCompare(oldestOpen.get(b.id) ?? "9999")
       : (a: ListRow, b: ListRow) => newestFirst(a.last_in_at, b.last_in_at) || newestFirst(a.last_message_at, b.last_message_at);
-  const fetchIds = async (only: string[]) =>
-    (await Promise.all(chunks(only, ID_CHUNK).map(async (part) => (await listQuery(part)).data ?? []))).flat();
+  // A failed read must never look like an empty inbox ("Nothing needs you"): throw, and the error screen offers Try again.
+  const rowsOf = async (query: ReturnType<typeof listQuery>) => {
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  };
+  const fetchIds = async (only: string[]) => (await Promise.all(chunks(only, ID_CHUNK).map((part) => rowsOf(listQuery(part))))).flat();
   let list: ListRow[];
   if (ids) list = (await fetchIds(ids)).sort(order).slice(0, LIST_LIMIT);
   else if (sort === "waiting") {
     // Everyone: the clients waiting on us first (oldest at the top), then the rest by newest message.
     const waiting = (await fetchIds([...oldestOpen.keys()])).sort(order);
-    const rest = ((await listQuery(null)).data ?? []).filter((r) => !oldestOpen.has(r.id));
+    const rest = (await rowsOf(listQuery(null))).filter((r) => !oldestOpen.has(r.id));
     list = [...waiting, ...rest].slice(0, LIST_LIMIT);
-  } else list = (await listQuery(null)).data ?? [];
+  } else list = await rowsOf(listQuery(null));
 
   // Counts for the view tabs (within the same department/stage filter, before search).
   const inScope = (clientStage: string | null) =>
@@ -183,7 +192,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
             >
               {label}
               {key !== "all" && (
-                <span className={`ml-1 text-xs tabular-nums ${key === "escalated" && count(key) ? "font-semibold text-red-600" : "text-zinc-400"}`}>{count(key)}</span>
+                <span className={`ml-1 text-xs tabular-nums ${key === "escalated" && count(key) ? "font-semibold text-red-600" : "text-zinc-500"}`}>{count(key)}</span>
               )}
             </Link>
           ))}
@@ -199,7 +208,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
         <form className="flex flex-wrap items-center gap-2" action="/dashboard/inbox">
           {sort === "waiting" && <input type="hidden" name="sort" value="waiting" />}
           <input type="hidden" name="view" value={view} />
-          <select name="dept" defaultValue={dept} aria-label="Department" className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-sm">
+          <select name="dept" defaultValue={dept} aria-label="Department" className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-base sm:text-sm">
             <option value="all">All departments</option>
             {Object.entries(DEPARTMENTS).map(([k, d]) => (
               <option key={k} value={k}>
@@ -207,7 +216,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
               </option>
             ))}
           </select>
-          <select name="stage" defaultValue={stage} aria-label="Stage" className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-sm">
+          <select name="stage" defaultValue={stage} aria-label="Stage" className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-base sm:text-sm">
             <option value="">Any stage</option>
             {STAGES.map((s) => (
               <option key={s} value={s}>
@@ -215,7 +224,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
               </option>
             ))}
           </select>
-          <input name="q" defaultValue={q} placeholder="Search…" aria-label="Search clients" className="w-40 rounded-md border border-zinc-200 bg-white px-2 py-1 text-sm" />
+          <input name="q" defaultValue={q} placeholder="Search…" aria-label="Search clients" className="w-40 rounded-md border border-zinc-200 bg-white px-2 py-1 text-base sm:text-sm" />
           <button type="submit" className="rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-sm text-zinc-700 hover:border-zinc-400">
             Apply
           </button>
@@ -249,7 +258,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
                       <span className="min-w-0 flex-1">
                         <span className="flex items-baseline gap-2">
                           <span className={`min-w-0 flex-1 truncate text-sm ${c.waiting ? "font-semibold text-zinc-900" : "text-zinc-800"}`}>{c.name}</span>
-                          <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">{shortAgo(c.last_in_at ?? c.last_message_at, now)}</span>
+                          <span className="shrink-0 text-[11px] tabular-nums text-zinc-500">{shortAgo(c.last_in_at ?? c.last_message_at, now, tz)}</span>
                         </span>
                         <span className="mt-0.5 block truncate text-xs text-zinc-700">
                           {c.last_in_body || (c.last_in_attachments ? "📎 Photo or file" : c.last_in_at ? "(no text)" : c.last_body || "No messages yet")}
@@ -258,20 +267,21 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
                           <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-zinc-500">
                             {c.last_in_channel && <ChannelTag channel={c.last_in_channel} />}
                             <span className="tabular-nums">{c.receivedLabel}</span>
-                            <span className="text-zinc-400">· {c.sourceLabel}</span>
+                            <span className="text-zinc-500">· {c.sourceLabel}</span>
                             {c.repliedSince && <span className="font-semibold text-[#3F7A5C]">· ✓ Replied</span>}
                           </span>
                         )}
                         <span className="mt-1 flex flex-wrap items-center gap-1">
                           {c.waiting > 0 && (
                             <span
-                              className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${c.overdue ? "bg-red-50 text-red-700" : c.dueSoon ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}
+                              className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${c.overdue ? "bg-red-50 text-red-700" : c.dueSoon ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}
                             >
-                              waiting {c.waitedLabel}
+                              {/* Said in words too, not only by colour. */}
+                              {c.overdue ? "Overdue · " : c.dueSoon ? "Due soon · " : ""}waiting {c.waitedLabel}
                             </span>
                           )}
-                          {c.escalated && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">Escalated</span>}
-                          {isStage(c.stage) && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${STAGE_STYLE[c.stage]}`}>{c.stage}</span>}
+                          {c.escalated && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[11px] font-semibold text-white">Escalated</span>}
+                          {isStage(c.stage) && <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-medium ${STAGE_STYLE[c.stage]}`}>{c.stage}</span>}
                         </span>
                       </span>
                     </Link>
@@ -280,14 +290,14 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
               })}
             </ul>
           )}
-          {(list?.length ?? 0) >= LIST_LIMIT && <p className="border-t border-zinc-100 px-3 py-2 text-center text-[11px] text-zinc-400">Showing the {LIST_LIMIT} most recent — search to find others.</p>}
+          {(list?.length ?? 0) >= LIST_LIMIT && <p className="border-t border-zinc-100 px-3 py-2 text-center text-[11px] text-zinc-500">Showing the {LIST_LIMIT} most recent — search to find others.</p>}
         </section>
 
         {/* Selected conversation */}
         <div className={`${selected ? "flex" : "hidden lg:flex"} min-w-0 flex-1 flex-col gap-3`}>
           {selected ? (
             <>
-              <Link href={params({ c: "" })} className="text-xs font-semibold text-[#B08D57] hover:underline lg:hidden">
+              <Link href={params({ c: "" })} className="text-xs font-semibold text-[#8A6A3A] hover:underline lg:hidden">
                 ← Back to inbox
               </Link>
               <ConversationView clientId={selected} before={before} basePath={params({ c: selected })} />

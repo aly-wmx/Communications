@@ -1,6 +1,7 @@
 import "server-only";
 import type { createClient } from "@/lib/supabase/server";
 import { accountStateKey, resolveGhlAccounts } from "./ghl-accounts";
+import { formatStamp } from "@/lib/format-time";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -44,10 +45,10 @@ export async function loadGhlHealth(supabase: Supabase): Promise<GhlHealth[]> {
 }
 
 /** A one-line status: "Connected · last synced …", or what's wrong. */
-export function ghlStatusLine(h: GhlHealth): { text: string; ok: boolean } {
+export function ghlStatusLine(h: GhlHealth, timeZone: string): { text: string; ok: boolean } {
   if (!h.connected) return { text: "Not connected", ok: false };
   if (h.missing.length) return { text: `Add ${h.missing.join(" and ")} in Vercel`, ok: false };
   if (h.lastError) return { text: `Sync problem: ${h.lastError}`, ok: false };
-  if (h.lastOkAt) return { text: `Connected · last synced ${new Date(h.lastOkAt).toLocaleString()}`, ok: true };
+  if (h.lastOkAt) return { text: `Connected · last synced ${formatStamp(h.lastOkAt, timeZone)}`, ok: true };
   return { text: "Connected · waiting for the first sync", ok: true };
 }

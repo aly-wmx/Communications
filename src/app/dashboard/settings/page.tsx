@@ -44,7 +44,7 @@ export default async function SettingsPage() {
           </div>
           <ul className="space-y-0.5 text-right">
             {ghl.map((h) => {
-              const { text, ok } = ghlStatusLine(h);
+              const { text, ok } = ghlStatusLine(h, slaFromJson(settings?.sla).timeZone || "UTC");
               return (
                 <li key={h.businessId} className={`text-xs font-semibold ${ok ? "text-[#3F7A5C]" : "text-amber-700"}`}>
                   {ghl.length > 1 ? `${h.businessName}: ` : ""}

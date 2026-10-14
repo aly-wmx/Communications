@@ -10,7 +10,7 @@ export function BusinessSwitcher({ businesses, currentId }: { businesses: Busine
 
   return (
     <div className="border-b border-zinc-200 px-4 py-3">
-      <label htmlFor="business" className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+      <label htmlFor="business" className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
         Business
       </label>
       <div className="mt-1 flex items-center gap-2">

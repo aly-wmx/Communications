@@ -26,6 +26,9 @@ function ago(iso: string) {
   return `${Math.floor(m / 1440)}d ago`;
 }
 
+/** Fired with the unread count, so the phone header (outside the drawer) can show it. */
+export const UNREAD_EVENT = "wmx:unread";
+
 /** Your notifications, live. RLS means each person only ever receives their own. */
 export function NotificationBell({ onIncoming }: { onIncoming?: (n: Item) => void }) {
   const router = useRouter();
@@ -38,6 +41,9 @@ export function NotificationBell({ onIncoming }: { onIncoming?: (n: Item) => voi
   }, [onIncoming]);
 
   const unread = items.filter((i) => !i.read_at).length;
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(UNREAD_EVENT, { detail: unread }));
+  }, [unread]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -78,8 +84,13 @@ export function NotificationBell({ onIncoming }: { onIncoming?: (n: Item) => voi
     const close = (e: MouseEvent) => {
       if (panel.current && !panel.current.contains(e.target as Node)) setOpen(false);
     };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [open]);
 
   const markRead = useCallback(async (ids: string[]) => {
@@ -108,7 +119,7 @@ export function NotificationBell({ onIncoming }: { onIncoming?: (n: Item) => voi
             <p className="text-sm font-semibold text-zinc-900">Notifications</p>
             <div className="flex gap-3 text-xs">
               {unread > 0 && (
-                <button type="button" onClick={() => void markRead(items.filter((i) => !i.read_at).map((i) => i.id))} className="text-[#B08D57] hover:underline">
+                <button type="button" onClick={() => void markRead(items.filter((i) => !i.read_at).map((i) => i.id))} className="text-[#8A6A3A] hover:underline">
                   Mark all read
                 </button>
               )}
@@ -138,7 +149,7 @@ export function NotificationBell({ onIncoming }: { onIncoming?: (n: Item) => voi
                     <span className="min-w-0 flex-1">
                       <span className={`block text-sm ${n.read_at ? "text-zinc-700" : "font-semibold text-zinc-900"}`}>{n.title}</span>
                       {n.body && <span className="block truncate text-xs text-zinc-500">{n.body}</span>}
-                      <span className="block text-[11px] text-zinc-400">{ago(n.created_at)}</span>
+                      <span className="block text-[11px] text-zinc-500">{ago(n.created_at)}</span>
                     </span>
                     {!n.read_at && <span className="mt-1.5 size-2 shrink-0 rounded-full bg-[#B08D57]" aria-label="unread" />}
                   </button>

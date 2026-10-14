@@ -45,7 +45,7 @@ export function SignInAccess({ domains: initialDomains, blocked: initialBlocked 
               disabled={pending}
               onClick={() => save(domains.filter((x) => x !== d), blocked)}
               aria-label={`Remove ${d}`}
-              className="text-zinc-400 hover:text-red-600"
+              className="text-zinc-500 hover:text-red-600"
             >
               ×
             </button>
@@ -64,7 +64,7 @@ export function SignInAccess({ domains: initialDomains, blocked: initialBlocked 
           onChange={(e) => setDraft(e.target.value)}
           placeholder="e.g. watermarkdesignbuild.com"
           aria-label="Add a domain"
-          className="w-72 rounded-md border border-zinc-300 px-3 py-1.5 text-sm focus:border-zinc-400 focus:outline-none"
+          className="w-72 rounded-md border border-zinc-300 px-3 py-1.5 text-base sm:text-sm focus:border-zinc-400 focus:outline-none"
         />
         <button type="submit" disabled={pending || !draft.trim()} className="rounded-md bg-[#1C2B47] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
           Add domain
@@ -79,7 +79,7 @@ export function SignInAccess({ domains: initialDomains, blocked: initialBlocked 
             {blocked.map((b) => (
               <li key={b} className="flex items-center justify-between rounded-md bg-zinc-50 px-3 py-1.5 text-sm">
                 {b}
-                <button type="button" disabled={pending} onClick={() => save(domains, blocked.filter((x) => x !== b))} className="text-xs font-semibold text-[#B08D57] hover:underline">
+                <button type="button" disabled={pending} onClick={() => save(domains, blocked.filter((x) => x !== b))} className="text-xs font-semibold text-[#8A6A3A] hover:underline">
                   Unblock
                 </button>
               </li>

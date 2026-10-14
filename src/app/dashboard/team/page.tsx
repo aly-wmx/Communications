@@ -4,6 +4,8 @@ import { ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 import { TeamTable } from "./TeamTable";
 import { GhlUsers } from "./GhlUsers";
+import { formatStamp } from "@/lib/format-time";
+import { businessTimeZone } from "@/lib/time-zone";
 
 export default async function TeamPage() {
   const me = await requireAdminPage();
@@ -28,7 +30,7 @@ export default async function TeamPage() {
         <GhlUsers
           users={ghlUsers ?? []}
           members={(members ?? []).map((m) => ({ id: m.id, name: m.name, ghl_user_id: m.ghl_user_id }))}
-          refreshedAt={ghlState.refreshedAt ?? ""}
+          refreshedAt={ghlState.refreshedAt ? formatStamp(ghlState.refreshedAt, await businessTimeZone()) : ""}
           error={ghlState.error ?? ""}
         />
       )}

@@ -7,15 +7,17 @@ import { loadQueue } from "@/lib/comms/load";
 import { needsEscalation } from "@/lib/comms/sla";
 import { createClient } from "@/lib/supabase/server";
 import { EscalationsView, type View } from "./EscalationsView";
+import { NoBusiness } from "@/components/NoBusiness";
 
 const RESOLVED_DAYS = 7;
 
 export default async function EscalationsPage({ searchParams }: PageProps<"/dashboard/escalations">) {
   const me = await getSessionMember();
   const { current } = await getBusinessContext();
-  if (!me || !current) return null;
+  if (!me) return null;
+  if (!current) return <NoBusiness />;
   const sp = await searchParams;
-  const view: View = sp.view === "kanban" ? "kanban" : "table";
+  const view: View = sp.view === "kanban" ? "kanban" : sp.view === "table" ? "table" : "auto";
 
   const supabase = await createClient();
   const [{ contacts, sla }, { data: clientRows }, { data: team }] = await Promise.all([
@@ -31,11 +33,14 @@ export default async function EscalationsPage({ searchParams }: PageProps<"/dash
     .sort((a, b) => b.resolvedAt.localeCompare(a.resolvedAt))
     .slice(0, 50);
 
-  const tab = (v: View, label: string) => (
+  // With no choice made ("auto"), the highlighted tab follows what's on screen: Kanban on phones, Table from md up.
+  const active = (v: Exclude<View, "auto">) =>
+    view === v ? "bg-white text-zinc-900 shadow-sm" : view === "auto" ? (v === "kanban" ? "max-md:bg-white max-md:shadow-sm" : "md:bg-white md:shadow-sm") : "";
+  const tab = (v: Exclude<View, "auto">, label: string) => (
     <Link
-      href={v === "kanban" ? "/dashboard/escalations?view=kanban" : "/dashboard/escalations"}
+      href={`/dashboard/escalations?view=${v}`}
       aria-current={view === v ? "page" : undefined}
-      className={`rounded-md px-3 py-1 text-sm font-medium ${view === v ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600 hover:text-zinc-900"}`}
+      className={`rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:text-zinc-900 ${active(v)}`}
     >
       {label}
     </Link>

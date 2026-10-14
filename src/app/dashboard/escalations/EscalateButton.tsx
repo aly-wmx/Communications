@@ -102,7 +102,7 @@ export function EscalateButton({
                     className="accent-[#B08D57]"
                   />
                   {t.name}
-                  {t.escalation && <span className="text-[11px] text-zinc-400">manager</span>}
+                  {t.escalation && <span className="text-[11px] text-zinc-500">manager</span>}
                 </label>
               ))}
           </fieldset>
@@ -113,7 +113,7 @@ export function EscalateButton({
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="e.g. Client upset about the tile delay"
-              className="mt-1 w-full resize-y rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-normal focus:border-zinc-400 focus:outline-none"
+              className="mt-1 w-full resize-y rounded-md border border-zinc-300 px-3 py-1.5 text-base sm:text-sm font-normal focus:border-zinc-400 focus:outline-none"
             />
           </label>
           {error && (

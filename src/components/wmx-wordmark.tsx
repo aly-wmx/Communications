@@ -9,12 +9,12 @@ export function WmxWordmark({
   variant?: "light" | "dark";
   className?: string;
 }) {
-  const kicker = variant === "light" ? "text-[#D8B378]" : "text-[#B08D57]";
+  const kicker = variant === "light" ? "text-[#D8B378]" : "text-[#8A6A3A]";
   const heading = variant === "light" ? "text-white" : "text-[#232019]";
 
   return (
     <div className={className}>
-      <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${kicker}`}>
+      <p className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${kicker}`}>
         WMX Management Group
       </p>
       <p className={`text-sm font-bold ${heading}`}>Client Communications</p>

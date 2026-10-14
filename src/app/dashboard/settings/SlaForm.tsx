@@ -44,18 +44,18 @@ export function SlaForm({ initial, team }: { initial: SlaSettings; team: Array<{
     setMessage(null);
     startTransition(async () => {
       const result = await saveSla({ ...v, timeZone: v.timeZone ?? "" });
-      setMessage(result.ok ? { text: "Saved. The queue and alerts use the new matrix now.", ok: true } : { text: result.error, ok: false });
+      setMessage(result.ok ? { text: "Saved. The Inbox and alerts use the new targets now.", ok: true } : { text: result.error, ok: false });
     });
   }
 
   const managers = team.filter((t) => t.escalation).map((t) => t.name);
-  const input = "w-full rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-sm focus:border-zinc-400 focus:outline-none";
+  const input = "w-full rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-base sm:text-sm focus:border-zinc-400 focus:outline-none";
 
   return (
     <form onSubmit={submit} className="max-w-3xl space-y-5 rounded-lg border border-zinc-200 bg-white p-5">
       <div>
         <h2 className="text-sm font-semibold text-zinc-900">Escalation matrix</h2>
-        <p className="mt-1 text-sm text-zinc-600">How long a client can wait for a first response before the queue warns, then escalates.</p>
+        <p className="mt-1 text-sm text-zinc-600">How long a client can wait for a first response before the Inbox flags it as due soon, then escalates it.</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

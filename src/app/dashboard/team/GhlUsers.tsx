@@ -39,7 +39,7 @@ export function GhlUsers({ users, members, refreshedAt, error }: { users: GhlUse
         <div>
           <h2 className="text-sm font-semibold text-zinc-900">GoHighLevel users</h2>
           <p className="text-xs text-zinc-500">
-            Your GHL users, refreshed hourly{refreshedAt ? ` (last ${new Date(refreshedAt).toLocaleString()})` : ""}. Linking someone credits their GHL replies to them.
+            Your GHL users, refreshed hourly{refreshedAt ? ` (last ${refreshedAt})` : ""}. Linking someone credits their GHL replies to them.
             Adding someone gives them sign-in access to all client conversations.
           </p>
           {error && <p className="mt-1 text-xs text-amber-700">{error}</p>}
@@ -87,7 +87,7 @@ export function GhlUsers({ users, members, refreshedAt, error }: { users: GhlUse
                           type="button"
                           disabled={pending}
                           onClick={() => run(() => linkGhlUser({ memberId: member.id, ghlUserId: "" }), `Unlinked ${member.name}`)}
-                          className="text-xs text-zinc-400 hover:text-red-600"
+                          className="text-xs text-zinc-500 hover:text-red-600"
                         >
                           Unlink
                         </button>

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { searchClients, type ClientPick } from "../messaging/actions";
 import { logCall } from "./actions";
+import { onRadioKeys } from "@/lib/radio-keys";
 
 function localNow() {
   const d = new Date();
@@ -10,6 +11,8 @@ function localNow() {
 }
 
 /** "Log a call" for calls made outside GoHighLevel. */
+const OUTCOMES = ["connected", "missed", "voicemail", "failed"] as const;
+
 export function LogCall() {
   const dialog = useRef<HTMLDialogElement>(null);
   const [query, setQuery] = useState("");
@@ -54,7 +57,7 @@ export function LogCall() {
     });
   }
 
-  const input = "w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm focus:border-zinc-400 focus:outline-none";
+  const input = "w-full rounded-md border border-zinc-300 px-3 py-1.5 text-base sm:text-sm focus:border-zinc-400 focus:outline-none";
   const seg = (on: boolean) => `flex-1 rounded-md py-1 text-sm ${on ? "bg-white font-semibold shadow-sm" : "text-zinc-500"}`;
 
   return (
@@ -85,7 +88,7 @@ export function LogCall() {
                 <span className="font-semibold">{picked.name}</span>
                 <span className="block text-xs text-zinc-500">{picked.detail}</span>
               </span>
-              <button type="button" onClick={() => setPicked(null)} className="text-xs font-semibold text-[#B08D57] hover:underline">
+              <button type="button" onClick={() => setPicked(null)} className="text-xs font-semibold text-[#8A6A3A] hover:underline">
                 Change
               </button>
             </div>
@@ -109,17 +112,27 @@ export function LogCall() {
               )}
             </div>
           )}
-          <div className="flex gap-1 rounded-lg bg-zinc-100 p-0.5" role="radiogroup" aria-label="Direction">
-            <button type="button" role="radio" aria-checked={direction === "outbound"} onClick={() => setDirection("outbound")} className={seg(direction === "outbound")}>
+          <div
+            className="flex gap-1 rounded-lg bg-zinc-100 p-0.5"
+            role="radiogroup"
+            aria-label="Direction"
+            onKeyDown={(e) => onRadioKeys(e, ["outbound", "inbound"] as const, direction, setDirection)}
+          >
+            <button type="button" role="radio" aria-checked={direction === "outbound"} tabIndex={direction === "outbound" ? 0 : -1} onClick={() => setDirection("outbound")} className={seg(direction === "outbound")}>
               ↗ We called
             </button>
-            <button type="button" role="radio" aria-checked={direction === "inbound"} onClick={() => setDirection("inbound")} className={seg(direction === "inbound")}>
+            <button type="button" role="radio" aria-checked={direction === "inbound"} tabIndex={direction === "inbound" ? 0 : -1} onClick={() => setDirection("inbound")} className={seg(direction === "inbound")}>
               ↙ They called
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-1 rounded-lg bg-zinc-100 p-0.5 sm:grid-cols-4" role="radiogroup" aria-label="Outcome">
-            {(["connected", "missed", "voicemail", "failed"] as const).map((o) => (
-              <button key={o} type="button" role="radio" aria-checked={outcome === o} onClick={() => setOutcome(o)} className={seg(outcome === o)}>
+          <div
+            className="grid grid-cols-2 gap-1 rounded-lg bg-zinc-100 p-0.5 sm:grid-cols-4"
+            role="radiogroup"
+            aria-label="Outcome"
+            onKeyDown={(e) => onRadioKeys(e, OUTCOMES, outcome, setOutcome)}
+          >
+            {OUTCOMES.map((o) => (
+              <button key={o} type="button" role="radio" aria-checked={outcome === o} tabIndex={outcome === o ? 0 : -1} onClick={() => setOutcome(o)} className={seg(outcome === o)}>
                 {o[0].toUpperCase() + o.slice(1)}
               </button>
             ))}
@@ -136,7 +149,7 @@ export function LogCall() {
           </div>
           <textarea rows={2} className={`${input} resize-y`} placeholder="Notes (optional)" aria-label="Notes" value={note} onChange={(e) => setNote(e.target.value)} />
           {direction === "inbound" && (outcome === "missed" || outcome === "voicemail") && (
-            <p className="text-xs text-amber-700">This also adds them to the queue so someone calls back.</p>
+            <p className="text-xs text-amber-700">This also puts them in the Inbox as waiting, so someone calls back.</p>
           )}
           {error && (
             <p role="alert" className="text-sm text-red-600">
@@ -147,7 +160,7 @@ export function LogCall() {
             <button type="button" onClick={() => dialog.current?.close()} className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700">
               Cancel
             </button>
-            <button type="submit" disabled={pending} className="rounded-md bg-[#B08D57] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50">
+            <button type="submit" disabled={pending} className="rounded-md bg-[#8A6A3A] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50">
               {pending ? "Saving…" : "Log call"}
             </button>
           </div>

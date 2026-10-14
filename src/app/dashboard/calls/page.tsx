@@ -9,6 +9,8 @@ import { slaFromJson } from "@/lib/comms/rows";
 import { createClient } from "@/lib/supabase/server";
 import { RecordingPlayer } from "../clients/[id]/RecordingPlayer";
 import { LogCall } from "./LogCall";
+import { NoBusiness } from "@/components/NoBusiness";
+import { conversationHref } from "@/lib/links";
 
 const OUTCOMES = ["all", "missed", "voicemail", "failed", "connected"] as const;
 
@@ -19,7 +21,7 @@ export default async function CallsPage({ searchParams }: PageProps<"/dashboard/
   const dir = sp.dir === "inbound" || sp.dir === "outbound" ? sp.dir : "all";
 
   const [{ current }, me] = await Promise.all([getBusinessContext(), getSessionMember()]);
-  if (!current) return null;
+  if (!current) return <NoBusiness />;
   const exportable = me ? canExport(me.role) : false;
   const { data: settings } = await (await createClient()).from("settings").select("sla").eq("id", 1).maybeSingle();
   const tz = slaFromJson(settings?.sla).timeZone || "UTC";
@@ -82,10 +84,10 @@ export default async function CallsPage({ searchParams }: PageProps<"/dashboard/
               <span className="text-xs tabular-nums text-zinc-500">{fmt.format(new Date(c.occurredAt))}</span>
               <div className="min-w-0">
                 <p className="flex flex-wrap items-center gap-2 text-sm">
-                  <span aria-label={c.direction === "inbound" ? "Incoming" : "Outgoing"} className="text-zinc-400">
+                  <span aria-label={c.direction === "inbound" ? "Incoming" : "Outgoing"} className="text-zinc-500">
                     {c.direction === "inbound" ? "↙" : "↗"}
                   </span>
-                  <Link href={`/dashboard/clients/${c.clientId}`} className="font-semibold text-zinc-900 hover:text-[#B08D57] hover:underline">
+                  <Link href={conversationHref(c.clientId)} className="font-semibold text-zinc-900 hover:text-[#8A6A3A] hover:underline">
                     {c.clientName}
                   </Link>
                   <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${CALL_OUTCOMES[c.outcome].tag}`}>{CALL_OUTCOMES[c.outcome].label}</span>
@@ -94,7 +96,7 @@ export default async function CallsPage({ searchParams }: PageProps<"/dashboard/
                 {(c.note || c.loggedBy) && (
                   <p className="truncate text-xs text-zinc-500">
                     {c.note}
-                    {c.loggedBy && <span className="text-zinc-400">{c.note ? " · " : ""}logged by {c.loggedBy}</span>}
+                    {c.loggedBy && <span className="text-zinc-500">{c.note ? " · " : ""}logged by {c.loggedBy}</span>}
                   </p>
                 )}
               </div>

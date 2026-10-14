@@ -12,6 +12,9 @@ type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChan
 };
 
 /** A textarea that suggests teammates when you type "@". */
+/** A phone or tablet: the main pointer is a finger. */
+export const isTouch = () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+
 export const MentionTextarea = forwardRef<HTMLTextAreaElement, Props>(function MentionTextarea(
   { value, onValueChange, team, onSubmit, className = "", ...rest },
   ref,
@@ -53,7 +56,8 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, Props>(function M
         return;
       }
     }
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && onSubmit) {
+    // Touch keyboards have no Shift+Enter, so there Enter is a new line and the Send button sends.
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && onSubmit && !isTouch()) {
       e.preventDefault();
       onSubmit();
     }

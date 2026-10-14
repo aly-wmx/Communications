@@ -61,7 +61,7 @@ export function TeamTable({ members, meId }: { members: Member[]; meId: string }
           type="button"
           disabled={pending}
           onClick={handleAdd}
-          className="text-xs font-semibold text-[#B08D57] hover:underline disabled:opacity-50"
+          className="text-xs font-semibold text-[#8A6A3A] hover:underline disabled:opacity-50"
         >
           + Add person
         </button>

@@ -49,7 +49,7 @@ export function DashboardNav({ role, queueBadge, escalationBadge }: { role: Role
       {MAIN.map(link)}
       {role === "admin" && (
         <>
-          <p className="mt-4 px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">Admin</p>
+          <p className="mt-4 px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">Admin</p>
           {ADMIN.map(link)}
         </>
       )}

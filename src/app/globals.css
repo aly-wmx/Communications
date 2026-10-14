@@ -128,3 +128,12 @@
     @apply font-sans;
   }
 }
+/*
+ * Keyboard focus is always visible. Unlayered on purpose: it outranks the
+ * focus:outline-none utilities on inputs, which otherwise leave only a faint
+ * border change.
+ */
+:focus-visible {
+  outline: 2px solid #1c2b47;
+  outline-offset: 2px;
+}

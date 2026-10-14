@@ -117,6 +117,20 @@ export function reminderDue(c: ClientContact, s: SlaSettings, now: Date): boolea
   return !c.remindedAt && slaState(c, s, now).stage === "reminder";
 }
 
+/**
+ * Waiting on this person: open and assigned to them, or open and unassigned for a
+ * coordinator (who triages new items). Drives both the Inbox "Needs me" view and
+ * the sidebar badge, so the two always agree.
+ */
+export function needsMe(c: ClientContact, me: { memberId: string; role: string }): boolean {
+  return c.status === 'Open' && (c.assigneeId === me.memberId || (!c.assigneeId && me.role === 'coordinator'));
+}
+
+/** Clients with at least one item that needs this person. */
+export function clientsNeedingMe(contacts: ClientContact[], me: { memberId: string; role: string }): number {
+  return new Set(contacts.filter((c) => needsMe(c, me)).map((c) => c.clientId)).size;
+}
+
 /** Escalated and nobody has said "I've got it" yet. */
 export function awaitingPickup(c: ClientContact): boolean {
   return c.status !== "Resolved" && c.escalations.some((e) => !e.acknowledgedAt);

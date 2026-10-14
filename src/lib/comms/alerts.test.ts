@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { incomingAlert, type AlertRow } from "./alerts";
+import { alertIsForMe, incomingAlert, type AlertRow } from "./alerts";
 
 const now = new Date("2026-10-06T15:00:00Z");
 const ago = (s: number) => new Date(now.getTime() - s * 1000).toISOString();
@@ -55,5 +55,36 @@ describe("incomingAlert", () => {
     const a = incomingAlert("INSERT", row({ priority: "Urgent" }), "tm_aly", team, now);
     expect(a?.urgent).toBe(true);
     expect(a?.key).toBe(`ct_1:${ago(5)}`);
+  });
+});
+
+describe("alertIsForMe", () => {
+  const van = { id: "van", department: "sales" as const, currentBusinessId: "wm" };
+  const newLead = { businessId: "wm", stage: "New Lead" };
+
+  it("is loud for anything urgent or assigned to me", () => {
+    expect(alertIsForMe({ urgent: true, assigneeId: "reid" }, { businessId: "other", stage: "Active Construction" }, van)).toBe(true);
+    expect(alertIsForMe({ urgent: false, assigneeId: "van" }, { businessId: "other", stage: "Active Construction" }, van)).toBe(true);
+  });
+
+  it("stays quiet for someone else's item", () => {
+    expect(alertIsForMe({ urgent: false, assigneeId: "reid" }, newLead, van)).toBe(false);
+  });
+
+  it("is loud for unassigned items in my business and department only", () => {
+    expect(alertIsForMe({ urgent: false, assigneeId: "" }, newLead, van)).toBe(true);
+    expect(alertIsForMe({ urgent: false, assigneeId: "" }, { businessId: "wm", stage: "Active Construction" }, van)).toBe(false);
+    expect(alertIsForMe({ urgent: false, assigneeId: "" }, { businessId: "manolo", stage: "New Lead" }, van)).toBe(false);
+  });
+
+  it("sends new clients without a stage to Sales", () => {
+    const noStage = { businessId: "wm", stage: null };
+    expect(alertIsForMe({ urgent: false, assigneeId: "" }, noStage, van)).toBe(true);
+    expect(alertIsForMe({ urgent: false, assigneeId: "" }, noStage, { ...van, department: "design" })).toBe(false);
+  });
+
+  it("is loud for every unassigned item in my business when I have no department", () => {
+    const anyone = { ...van, department: null };
+    expect(alertIsForMe({ urgent: false, assigneeId: "" }, { businessId: "wm", stage: "Active Construction" }, anyone)).toBe(true);
   });
 });

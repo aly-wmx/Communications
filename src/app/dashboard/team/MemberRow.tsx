@@ -57,7 +57,7 @@ export function MemberRow({
     <tr className="border-b border-zinc-100 align-top last:border-0">
       <td className="px-1.5 py-1">
         <EditableTextCell value={member.name} onSave={(value) => updateMemberField({ id: member.id, field: "name", value })} />
-        {isMe && <p className="px-2 text-[11px] text-zinc-400">You</p>}
+        {isMe && <p className="px-2 text-[11px] text-zinc-500">You</p>}
       </td>
       <td className="px-1.5 py-1">
         {isMe ? (
@@ -129,7 +129,7 @@ export function MemberRow({
             type="button"
             disabled={pending}
             onClick={handleInvite}
-            className="mr-3 text-xs font-semibold text-[#B08D57] hover:underline disabled:opacity-50"
+            className="mr-3 text-xs font-semibold text-[#8A6A3A] hover:underline disabled:opacity-50"
           >
             Send invite
           </button>
@@ -139,7 +139,7 @@ export function MemberRow({
             type="button"
             disabled={pending}
             onClick={handleDelete}
-            className="text-zinc-400 hover:text-red-600 disabled:opacity-50"
+            className="text-zinc-500 hover:text-red-600 disabled:opacity-50"
             aria-label={`Remove ${member.name}`}
           >
             ×

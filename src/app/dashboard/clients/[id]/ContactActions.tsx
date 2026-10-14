@@ -20,7 +20,7 @@ export interface OpenContact {
   pickedUpLabel: string;
 }
 
-/** The client's open queue items, with the same buttons as the Client Queue. */
+/** The client's open items (what they're waiting on), with assign, resolve and escalate. */
 export function ContactActions({
   contacts,
   team,
@@ -64,7 +64,7 @@ export function ContactActions({
         return (
           <div key={c.id} className={`space-y-2 rounded-md bg-white p-3 ${busy ? "opacity-60" : ""}`}>
             <div className="min-w-0">
-              <p className="truncate text-sm text-zinc-800">{c.summary || <em className="text-zinc-400">No message text</em>}</p>
+              <p className="truncate text-sm text-zinc-800">{c.summary || <em className="text-zinc-500">No message text</em>}</p>
               <p className="text-xs text-zinc-500">
                 {c.channel} · {c.receivedLabel}
                 {c.status === "Waiting on client" && " · waiting on client"}
@@ -78,7 +78,7 @@ export function ContactActions({
               value={c.assigneeId}
               disabled={busy}
               onChange={(e) => run({ action: "assign", contactId: c.id, assigneeId: e.target.value })}
-              className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-sm"
+              className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-base sm:text-sm"
             >
               <option value="">Unassigned</option>
               {team.map((t) => (

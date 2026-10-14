@@ -4,6 +4,10 @@ import { PageHeader } from "@/components/PageHeader";
 import { getBusinessContext } from "@/lib/business";
 import { createClient } from "@/lib/supabase/server";
 import { RestoreButton } from "./RestoreButton";
+import { NoBusiness } from "@/components/NoBusiness";
+import { conversationHref } from "@/lib/links";
+import { formatStamp } from "@/lib/format-time";
+import { businessTimeZone } from "@/lib/time-zone";
 
 const TABS = [
   ["all", "All"],
@@ -15,7 +19,8 @@ export default async function ArchivedPage({ searchParams }: PageProps<"/dashboa
   const sp = await searchParams;
   const tab = TABS.some(([k]) => k === sp.show) ? (sp.show as (typeof TABS)[number][0]) : "all";
   const { current } = await getBusinessContext();
-  if (!current) return null;
+  if (!current) return <NoBusiness />;
+  const tz = await businessTimeZone();
 
   const supabase = await createClient();
   let query = supabase
@@ -37,7 +42,7 @@ export default async function ArchivedPage({ searchParams }: PageProps<"/dashboa
     <div className="space-y-6">
       <PageHeader
         title="Archived"
-        description="Spam and archived clients. They're out of the queue and client list; new messages from them are kept but don't alert anyone. Restore to bring one back."
+        description="Spam and archived clients. They're hidden from the Inbox; new messages from them are kept but don't alert anyone. Restore to bring one back."
       />
       <nav className="flex gap-1 rounded-lg border border-zinc-200 bg-white p-0.5 text-sm" aria-label="Filter">
         {TABS.map(([key, label]) => (
@@ -47,7 +52,7 @@ export default async function ArchivedPage({ searchParams }: PageProps<"/dashboa
             aria-current={tab === key ? "page" : undefined}
             className={`rounded-md px-3 py-1 ${tab === key ? "bg-[#B08D5712] font-semibold text-[#1C2B47]" : "text-zinc-500 hover:text-zinc-900"}`}
           >
-            {label} <span className="text-xs text-zinc-400">{counts[key]}</span>
+            {label} <span className="text-xs text-zinc-500">{counts[key]}</span>
           </Link>
         ))}
       </nav>
@@ -62,11 +67,11 @@ export default async function ArchivedPage({ searchParams }: PageProps<"/dashboa
                 {c.archive_reason === "spam" ? "🚫" : "🗄"}
               </span>
               <div className="min-w-0 flex-1">
-                <Link href={`/dashboard/clients/${c.id}`} className="text-sm font-semibold text-zinc-900 hover:text-[#B08D57] hover:underline">
+                <Link href={conversationHref(c.id)} className="text-sm font-semibold text-zinc-900 hover:text-[#8A6A3A] hover:underline">
                   {c.name}
                 </Link>
                 <p className="text-xs text-zinc-500">
-                  {[c.phone || c.email, c.archived_at && `archived ${new Date(c.archived_at).toLocaleDateString()}`].filter(Boolean).join(" · ")}
+                  {[c.phone || c.email, c.archived_at && `archived ${formatStamp(c.archived_at, tz, "date")}`].filter(Boolean).join(" · ")}
                 </p>
                 {c.last_body && (
                   <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-zinc-600">

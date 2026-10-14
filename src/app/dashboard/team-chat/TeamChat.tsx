@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { MentionTextarea } from "@/components/MentionTextarea";
 import { createClient } from "@/lib/supabase/client";
 import { addTeamNote, deleteTeamNote } from "./actions";
+import { formatStamp } from "@/lib/format-time";
 
 export interface ChannelMessage {
   id: string;
@@ -19,7 +20,6 @@ function initials(name: string) {
   return ((parts[0]?.[0] ?? "?") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }
 
-const time = (iso: string) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 function highlight(body: string) {
   return body.split(/(@[A-Z][\w]*(?: [A-Z][\w]*)?)/g).map((part, k) => (part.startsWith("@") ? <strong key={k}>{part}</strong> : part));
@@ -31,12 +31,16 @@ export function TeamChat({
   meId,
   isAdmin,
   team,
+  timeZone,
 }: {
   messages: ChannelMessage[];
   meId: string;
   isAdmin: boolean;
   team: Array<{ id: string; name: string }>;
+  /** The business's zone, so the server render and the browser print the same times. */
+  timeZone: string;
 }) {
+  const time = (iso: string) => formatStamp(iso, timeZone);
   const router = useRouter();
   const scroller = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState("");
@@ -84,22 +88,28 @@ export function TeamChat({
             return (
               <div key={m.id} className={`group flex items-end gap-2 ${mine ? "justify-end" : ""}`}>
                 {!mine && (
-                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[#1C2B47]/10 text-[10px] font-bold text-[#1C2B47]">{initials(m.authorName)}</span>
+                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[#1C2B47]/10 text-[11px] font-bold text-[#1C2B47]">{initials(m.authorName)}</span>
                 )}
                 <div className={`flex max-w-[78%] flex-col ${mine ? "items-end" : "items-start"}`}>
                   <div className={`rounded-2xl px-3.5 py-2 text-[14px] shadow-sm ${mine ? "rounded-br-sm bg-[#1C2B47] text-white" : "rounded-bl-sm bg-white text-zinc-900"}`}>
                     <p className="whitespace-pre-wrap break-words">{highlight(m.body)}</p>
                   </div>
-                  <p className="mt-1 flex items-center gap-2 px-1 text-[10px] text-zinc-400">
+                  <p className="mt-1 flex items-center gap-2 px-1 text-[11px] text-zinc-500">
                     {!mine && <span className="font-semibold text-zinc-500">{m.authorName}</span>}
                     {time(m.createdAt)}
                     {(mine || isAdmin) && (
                       <button
                         type="button"
                         onClick={() => {
-                          if (window.confirm("Delete this message?")) startTransition(async () => void (await deleteTeamNote(m.id)));
+                          if (!window.confirm("Delete this message?")) return;
+                          setError(null);
+                          startTransition(async () => {
+                            const result = await deleteTeamNote(m.id);
+                            if (!result.ok) setError(result.error);
+                          });
                         }}
-                        className="hidden text-zinc-400 hover:text-red-600 group-hover:inline"
+                        // Always there on touch screens and for keyboards; on a mouse it appears on hover.
+                        className="text-zinc-500 hover:text-red-600 focus:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                       >
                         Delete
                       </button>
@@ -122,14 +132,14 @@ export function TeamChat({
             placeholder="Message the team… (@ to mention)"
             aria-label="Message the team"
             disabled={pending}
-            className="max-h-36 min-h-[2.5rem] resize-none rounded-2xl border border-zinc-200 bg-[#F7F6F2] px-4 py-2 text-sm focus:border-zinc-400 focus:bg-white focus:outline-none"
+            className="max-h-36 min-h-[2.5rem] resize-none rounded-2xl border border-zinc-200 bg-[#F7F6F2] px-4 py-2 text-base sm:text-sm focus:border-zinc-400 focus:bg-white focus:outline-none"
           />
           <button
             type="button"
             onClick={send}
             disabled={!draft.trim() || pending}
             aria-label="Send"
-            className="grid size-10 shrink-0 place-items-center rounded-full bg-[#B08D57] text-white shadow-sm hover:brightness-110 disabled:opacity-40"
+            className="grid size-10 shrink-0 place-items-center rounded-full bg-[#8A6A3A] text-white shadow-sm hover:brightness-110 disabled:opacity-40"
           >
             {pending ? "…" : "➤"}
           </button>

@@ -2,12 +2,15 @@ import { PageHeader } from "@/components/PageHeader";
 import { getSessionMember } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { PrefsForm } from "./PrefsForm";
+import { formatStamp } from "@/lib/format-time";
+import { businessTimeZone } from "@/lib/time-zone";
 
 const STATUS: Record<string, string> = { sent: "✓ sent", skipped: "— off", failed: "✗ failed", pending: "… sending" };
 
 export default async function NotificationsPage() {
   const me = await getSessionMember();
   if (!me) return null;
+  const tz = await businessTimeZone();
   const supabase = await createClient();
   const [{ data: prefRow }, { data: member }, { data: recent }, { data: rules }] = await Promise.all([
     supabase.from("notification_prefs").select("*").eq("member_id", me.memberId).maybeSingle(),
@@ -60,7 +63,7 @@ export default async function NotificationsPage() {
                 <tr key={n.id} className="border-t border-zinc-100 align-top">
                   <td className="py-1.5 pr-2">
                     <span className="text-zinc-800">{n.title}</span>
-                    <span className="block text-[11px] text-zinc-400">{new Date(n.created_at).toLocaleString()}</span>
+                    <span className="block text-[11px] text-zinc-500">{formatStamp(n.created_at, tz)}</span>
                     {n.delivery_error && <span className="block text-[11px] text-red-600">{n.delivery_error}</span>}
                   </td>
                   <td className="whitespace-nowrap py-1.5 text-xs text-zinc-600">{STATUS[n.slack_status] ?? n.slack_status}</td>
