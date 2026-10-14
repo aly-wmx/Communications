@@ -201,9 +201,9 @@ export type Database = {
         ];
       };
       integration_locks: {
-        Row: { key: string; locked_until: string };
-        Insert: { key: string; locked_until: string };
-        Update: { key?: string; locked_until?: string };
+        Row: { holder: string | null; key: string; locked_until: string };
+        Insert: { holder?: string | null; key: string; locked_until: string };
+        Update: { holder?: string | null; key?: string; locked_until?: string };
         Relationships: [];
       };
       integration_state: {
@@ -227,6 +227,7 @@ export type Database = {
           ghl_user_id: string;
           id: string;
           occurred_at: string;
+          sent_by_id: string | null;
           sent_by_user: boolean;
           source: string;
           status: string;
@@ -245,6 +246,7 @@ export type Database = {
           ghl_user_id?: string;
           id: string;
           occurred_at: string;
+          sent_by_id?: string | null;
           sent_by_user?: boolean;
           source?: string;
           status?: string;
@@ -263,6 +265,7 @@ export type Database = {
           ghl_user_id?: string;
           id?: string;
           occurred_at?: string;
+          sent_by_id?: string | null;
           sent_by_user?: boolean;
           source?: string;
           status?: string;
@@ -440,8 +443,8 @@ export type Database = {
       current_member_id: { Args: never; Returns: string };
       current_member_role: { Args: never; Returns: string };
       is_team_member: { Args: never; Returns: boolean };
-      release_integration_lock: { Args: { lock_key: string }; Returns: undefined };
-      take_integration_lock: { Args: { lock_key: string; ttl_seconds: number }; Returns: boolean };
+      release_integration_lock: { Args: { lock_key: string } | { lock_key: string; holder: string }; Returns: undefined };
+      take_integration_lock: { Args: { lock_key: string; ttl_seconds: number } | { lock_key: string; ttl_seconds: number; holder: string }; Returns: boolean };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

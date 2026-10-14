@@ -140,6 +140,23 @@ export function toMillis(v: unknown): number {
   return 0;
 }
 
+/**
+ * How an incoming call ended, from GHL's call status (Twilio's words) and duration.
+ * "pending" is a call still ringing: not handled yet, so the next sync sees how it ended.
+ * GHL sometimes sends no status; then a call that lasted any time was answered.
+ */
+export function inboundCallOutcome(status: string, durationSeconds: number): "answered" | "missed" | "pending" {
+  if (/no-?answer|missed|busy|fail|cancel/.test(status)) return "missed";
+  if (/ring|queue|initiat/.test(status)) return "pending";
+  if (/complete|answer|in-?progress/.test(status)) return "answered";
+  return durationSeconds > 0 ? "answered" : "missed";
+}
+
+const callDuration = (msg: GhlApiMessage) => {
+  const d = Number(msg.meta?.call?.duration);
+  return Number.isFinite(d) ? d : 0;
+};
+
 /** Message types that are system notes, not client conversation. */
 const IGNORED_TYPES = /ACTIVITY|INTERNAL|COMMENT|CAMPAIGN|REVIEW/i;
 
@@ -160,8 +177,10 @@ export function eventFromApiMessage(conv: GhlApiConversation, msg: GhlApiMessage
   let channel = channelFrom(type.replace(/^TYPE_/i, ""), "");
   if (isCall || isVoicemail) {
     if (direction === "inbound") {
+      const outcome = isVoicemail ? "missed" : inboundCallOutcome(callStatus, callDuration(msg));
+      if (outcome === "pending") return null;
       if (isVoicemail) channel = "Voicemail";
-      else if (/no-?answer|missed|busy|fail|cancel/.test(callStatus)) channel = "Missed call";
+      else if (outcome === "missed") channel = "Missed call";
       else {
         // Answered: the client spoke to someone, which stops the response clock like a reply.
         const at = toMillis(msg.dateAdded);
@@ -239,8 +258,8 @@ export function messageRecordFromApi(conv: GhlApiConversation, msg: GhlApiMessag
   let channel: GhlChannel = channelFrom(type.replace(/^TYPE_/i, ""), "");
   let body = (msg.body ?? "").trim();
   if (isCall) {
-    const missed = /no-?answer|missed|busy|fail|cancel/.test(callStatus);
-    channel = isVoicemail ? "Voicemail" : missed && direction === "inbound" ? "Missed call" : "Call";
+    const missed = direction === "inbound" && inboundCallOutcome(callStatus, callDuration(msg)) === "missed";
+    channel = isVoicemail ? "Voicemail" : missed ? "Missed call" : "Call";
     const label = isVoicemail
       ? "Voicemail"
       : `${direction === "inbound" ? "Incoming" : "Outgoing"} call${callStatus ? ` · ${callStatus.replace(/-/g, " ")}` : ""}`;

@@ -13,12 +13,9 @@ tracker): same sign-in, sidebar and look, different content.
 | Phase | Scope | State |
 |---|---|---|
 | 1. Foundation | Sign-in (password + Google), roles, sidebar, Team, Businesses, Overview | Done |
-| 2. Daily work | Client Queue, Clients, Call Log | Next |
-| 3. Escalation & GHL | Escalations page, Slack + email alerts, Settings, GHL connection status | |
-| 4. Outgoing & reporting | Announcements, Reports, templates | |
-
-The response-time engine, queue logic and GoHighLevel payload parsing already
-exist in `src/lib/comms` with tests; phases 2–4 build screens on top of them.
+| 2. Daily work | Inbox (replaces Client Queue and Clients), Call Log, Team Chat, Archived | Done |
+| 3. Escalation & GHL | Escalations, Slack + email alerts, Settings, GHL sync per business | Done |
+| 4. Outgoing & reporting | Reports and CSV export done; Announcements and templates not started | In progress |
 
 ## Access
 

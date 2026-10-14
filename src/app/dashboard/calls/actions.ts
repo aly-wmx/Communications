@@ -50,6 +50,7 @@ export async function logCall(input: unknown): Promise<ActionResult | { ok: true
       call_status: STATUS[v.outcome],
       duration_seconds: seconds || null,
       sent_by_user: v.direction === "outbound",
+      sent_by_id: me.memberId,
       source: `portal:${me.name}`,
       occurred_at: when.toISOString(),
     });

@@ -1,21 +1,27 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { getSessionMember } from "@/lib/auth";
+import { getBusinessContext } from "@/lib/business";
 import { createClient } from "@/lib/supabase/server";
 import { TeamChat } from "./TeamChat";
 
 export default async function TeamChatPage() {
   const me = await getSessionMember();
   if (!me) return null;
+  const { current } = await getBusinessContext();
   const supabase = await createClient();
   const [{ data: channel }, { data: clientNotes }, { data: team }] = await Promise.all([
     supabase.from("team_notes").select("id, author_id, body, created_at").is("client_id", null).order("created_at", { ascending: false }).limit(150),
-    supabase
-      .from("team_notes")
-      .select("id, author_id, body, created_at, client_id, clients(name)")
-      .not("client_id", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(15),
+    // Notes on the selected business's clients only; the chat itself is shared across businesses.
+    current
+      ? supabase
+          .from("team_notes")
+          .select("id, author_id, body, created_at, client_id, clients!inner(name, business_id)")
+          .not("client_id", "is", null)
+          .eq("clients.business_id", current.id)
+          .order("created_at", { ascending: false })
+          .limit(15)
+      : { data: [] },
     supabase.from("team_members").select("id, name").order("name"),
   ]);
   const nameOf = (id: string | null) => (team ?? []).find((t) => t.id === id)?.name ?? "Former teammate";

@@ -36,7 +36,12 @@ export const loadQueue = cache(async (businessId: string): Promise<{ contacts: C
     }
     return all;
   })();
-  const [rows, { data: settings }] = await Promise.all([rowsPromise, supabase.from("settings").select("sla").eq("id", 1).maybeSingle()]);
+  const [rows, { data: settings, error: settingsError }] = await Promise.all([
+    rowsPromise,
+    supabase.from("settings").select("sla").eq("id", 1).maybeSingle(),
+  ]);
+  // Wrong thresholds would show every wait as on time (or overdue), so a failed read is an error, not the defaults.
+  if (settingsError) throw settingsError;
   return {
     contacts: rows.map((row) => contactFromRow(row)),
     sla: slaFromJson(settings?.sla),

@@ -1,4 +1,4 @@
-import { needsEscalation, slaState, startOfZonedDay } from './sla';
+import { needsEscalation, REOPENED_EVENT, slaState, startOfZonedDay } from './sla';
 import type {
   Client,
   ClientContact,
@@ -78,7 +78,7 @@ export function waitOnClient(c: ClientContact, byId: string, now = new Date()) {
 }
 
 export function reopen(c: ClientContact, byId: string, now = new Date()) {
-  return withEvent(c, byId, 'Reopened', now, { status: 'Open', resolvedAt: '' });
+  return withEvent(c, byId, REOPENED_EVENT, now, { status: 'Open', resolvedAt: '' });
 }
 
 export function escalate(

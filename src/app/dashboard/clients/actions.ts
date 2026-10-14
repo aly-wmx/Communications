@@ -195,7 +195,10 @@ export async function setClientStage(input: unknown): Promise<UpdateClientResult
   const now = new Date().toISOString();
   const { error } = await supabase.from("clients").update({ stage, stage_changed_at: now }).eq("id", clientId);
   if (error) return { ok: false, error: "Couldn't change the stage." };
-  await supabase.from("client_stage_history").insert({ client_id: clientId, from_stage: client.stage, to_stage: stage, changed_by: me.memberId, changed_at: now });
+  const { error: historyError } = await supabase
+    .from("client_stage_history")
+    .insert({ client_id: clientId, from_stage: client.stage, to_stage: stage, changed_by: me.memberId, changed_at: now });
+  if (historyError) console.error("stage changed but not recorded in history", clientId, historyError);
   revalidatePath("/dashboard", "layout");
 
   if (client.ghl_contact_id) {

@@ -6,6 +6,7 @@ import {
   escalate,
   markResponded,
   queueStats,
+  reopen,
   resolve,
   sortQueue,
 } from './contacts';
@@ -76,6 +77,14 @@ describe('slaState', () => {
     const st = slaState(c, defaultSla, at('05T17:00'));
     expect(st).toMatchObject({ stage: 'responded', waitedMinutes: 20 });
     expect(c.status).toBe('Waiting on client');
+  });
+
+  it('starts a fresh wait when an unanswered item is reopened', () => {
+    // Came in Monday 9am, resolved at 9:30 without a reply, reopened Tuesday 9am.
+    const reopened = reopen(resolve(contact('2026-10-05T09:00'), 'van', at('05T09:30')), 'reid', at('06T09:00'));
+    expect(slaState(reopened, defaultSla, at('06T09:30'))).toMatchObject({ stage: 'ok', waitedMinutes: 30 });
+    expect(needsEscalation(reopened, defaultSla, at('06T09:30'))).toBe(false);
+    expect(slaState(reopened, defaultSla, at('06T13:00')).stage).toBe('breach');
   });
 
   it('keeps the first response time on follow-up replies', () => {

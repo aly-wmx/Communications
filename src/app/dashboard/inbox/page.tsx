@@ -112,15 +112,30 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
     }
     return query;
   };
-  // Long id lists go in chunks (a request URL has a size limit), then merge back into one newest-first list.
+  // Long id lists go in chunks (a request URL has a size limit), then merge back into one list in the chosen order
+  // before cutting it to LIST_LIMIT, so "longest waiting" never loses the oldest waiters to newer ones.
   const ids = idsFor[view];
   const newestFirst = (a: string | null, b: string | null) => (b ?? "").localeCompare(a ?? "");
-  const list = ids
-    ? (await Promise.all(chunks(ids, ID_CHUNK).map(async (part) => (await listQuery(part)).data ?? [])))
-        .flat()
-        .sort((a, b) => newestFirst(a.last_in_at, b.last_in_at) || newestFirst(a.last_message_at, b.last_message_at))
-        .slice(0, LIST_LIMIT)
-    : ((await listQuery(null)).data ?? []);
+  const oldestOpen = new Map<string, string>();
+  for (const [id, l] of byClient) {
+    const oldest = l.filter((c) => c.status === "Open").map((c) => c.receivedAt).sort()[0];
+    if (oldest) oldestOpen.set(id, oldest);
+  }
+  type ListRow = NonNullable<Awaited<ReturnType<typeof listQuery>>["data"]>[number];
+  const order =
+    sort === "waiting"
+      ? (a: ListRow, b: ListRow) => (oldestOpen.get(a.id) ?? "9999").localeCompare(oldestOpen.get(b.id) ?? "9999")
+      : (a: ListRow, b: ListRow) => newestFirst(a.last_in_at, b.last_in_at) || newestFirst(a.last_message_at, b.last_message_at);
+  const fetchIds = async (only: string[]) =>
+    (await Promise.all(chunks(only, ID_CHUNK).map(async (part) => (await listQuery(part)).data ?? []))).flat();
+  let list: ListRow[];
+  if (ids) list = (await fetchIds(ids)).sort(order).slice(0, LIST_LIMIT);
+  else if (sort === "waiting") {
+    // Everyone: the clients waiting on us first (oldest at the top), then the rest by newest message.
+    const waiting = (await fetchIds([...oldestOpen.keys()])).sort(order);
+    const rest = ((await listQuery(null)).data ?? []).filter((r) => !oldestOpen.has(r.id));
+    list = [...waiting, ...rest].slice(0, LIST_LIMIT);
+  } else list = (await listQuery(null)).data ?? [];
 
   // Counts for the view tabs (within the same department/stage filter, before search).
   const inScope = (clientStage: string | null) =>
@@ -151,10 +166,6 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
       waitedLabel: state ? formatMinutes(state.waitedMinutes) : "",
     };
   });
-
-  if (sort === "waiting") {
-    rows.sort((a, b) => (a.oldestWaiting || "9999").localeCompare(b.oldestWaiting || "9999"));
-  }
 
   const showList = !selected; // On phones, list and conversation take turns.
 

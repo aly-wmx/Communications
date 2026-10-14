@@ -34,20 +34,31 @@ function since(range: Range, timeZone: string): string | null {
   return new Date(now.getTime() - (range === "7d" ? 7 : 30) * 24 * 60 * 60_000).toISOString();
 }
 
-export async function loadCalls(businessId: string, range: Range, timeZone: string, limit = 1000): Promise<CallRow[]> {
-  const supabase = await createClient();
-  let q = supabase
-    .from("messages")
-    .select("id, client_id, direction, channel, call_status, duration_seconds, occurred_at, body, source, clients!inner(name, phone, business_id)")
-    .in("channel", ["Call", "Missed call", "Voicemail"])
-    .eq("clients.business_id", businessId)
-    .order("occurred_at", { ascending: false })
-    .limit(limit);
-  const from = since(range, timeZone || "UTC");
-  if (from) q = q.gte("occurred_at", from);
-  const { data } = await q;
+/** Supabase returns at most this many rows per request, so longer lists are read a page at a time. */
+const PAGE = 1000;
 
-  return (data ?? []).map((m) => {
+/** Calls in the range, newest first, up to `limit` (read in pages, so counts and exports aren't cut off at 1000). */
+export async function loadCalls(businessId: string, range: Range, timeZone: string, limit = 10_000): Promise<CallRow[]> {
+  const supabase = await createClient();
+  const from = since(range, timeZone || "UTC");
+  const data = [];
+  for (let start = 0; start < limit; start += PAGE) {
+    let q = supabase
+      .from("messages")
+      .select("id, client_id, direction, channel, call_status, duration_seconds, occurred_at, body, source, clients!inner(name, phone, business_id)")
+      .in("channel", ["Call", "Missed call", "Voicemail"])
+      .eq("clients.business_id", businessId)
+      .order("occurred_at", { ascending: false })
+      .order("id")
+      .range(start, Math.min(start + PAGE, limit) - 1);
+    if (from) q = q.gte("occurred_at", from);
+    const { data: page, error } = await q;
+    if (error) throw error;
+    data.push(...(page ?? []));
+    if (!page || page.length < PAGE) break;
+  }
+
+  return data.map((m) => {
     const client = m.clients as unknown as { name: string; phone: string };
     const status = m.call_status || /·\s*([a-z -]+)/i.exec(m.body)?.[1]?.trim().replace(/ /g, "-") || "";
     const note = m.body.includes(" — ") ? m.body.split(" — ").slice(1).join(" — ") : "";

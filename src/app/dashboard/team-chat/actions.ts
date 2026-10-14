@@ -68,7 +68,7 @@ export async function addTeamNote(input: unknown): Promise<ActionResult> {
         me.memberId,
         now,
       );
-      await supabase.from("contacts").insert({
+      const { error: openError } = await supabase.from("contacts").insert({
         id: c.id,
         client_id: clientId,
         channel: c.channel,
@@ -80,6 +80,7 @@ export async function addTeamNote(input: unknown): Promise<ActionResult> {
         history: [{ at: now.toISOString(), byId: me.memberId, message: `${me.name} flagged this for ${flagged.name} to reply` }] as unknown as Json,
         source: "manual",
       });
+      if (openError) return { ok: false, error: `Note posted, but couldn't open an item for ${flagged.name} to reply to. Try flagging again.` };
     }
   }
 

@@ -138,25 +138,47 @@ async function engineStart(sb: Db, now: Date): Promise<string> {
   return startedAt;
 }
 
+/** Every open item since the engine started, a page at a time (a single read stops at 1000 rows). */
+async function openContactsSince(sb: Db, startedAt: string) {
+  const PAGE = 500;
+  const all = [];
+  for (let page = 0; ; page++) {
+    const { data, error } = await sb
+      .from("contacts")
+      .select("*, clients(name)")
+      .eq("status", "Open")
+      .gte("received_at", startedAt)
+      .order("id")
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error) throw error;
+    all.push(...(data ?? []));
+    if (!data || data.length < PAGE) return all;
+  }
+}
+
 export async function runEngine(sb: Db, now = new Date()): Promise<{ reminded: number; escalated: number }> {
   const startedAt = await engineStart(sb, now);
-  const [{ data: rows }, { data: settings }, team] = await Promise.all([
-    sb.from("contacts").select("*, clients(name)").eq("status", "Open").gte("received_at", startedAt),
+  const [rows, { data: settings, error: settingsError }, team] = await Promise.all([
+    openContactsSince(sb, startedAt),
     sb.from("settings").select("sla").eq("id", 1).maybeSingle(),
     loadTeam(sb),
   ]);
+  // Never run on default thresholds because the real ones couldn't be read: that could escalate everything.
+  if (settingsError) throw settingsError;
   const sla = slaFromJson(settings?.sla);
   const members = planTeam(team);
   let reminded = 0;
   let escalated = 0;
 
-  for (const row of rows ?? []) {
+  for (const row of rows) {
     const { clients, ...contactRow } = row as typeof row & { clients: { name: string } | null };
     const c = contactFromRow(contactRow);
     const clientName = clients?.name ?? "A client";
 
     if (needsEscalation(c, sla, now)) {
       const planned = planEscalation(planContext(c, clientName, sla, now), members, { raisedById: "", automatic: true });
+      // Nobody receives escalations and nobody owns it: leave it overdue (the health panel says why) rather than "escalated to nobody".
+      if (!planned.length) continue;
       const notifiedIds = planned.map((p) => p.recipientId);
       const next = escalate(c, "", notifiedIds, "", team, now, "sla");
       // Only the run that changes the row sends notifications (guards against overlapping runs).

@@ -69,7 +69,8 @@ async function sendAndRecord(
   const messageId = sent.messageId || `portal_${now.getTime()}_${client.id}`;
   const body = input.message;
 
-  await Promise.all([
+  // The message has already gone: a failure to record it is logged; the sync copies it in within a minute anyway.
+  const recorded = await Promise.all([
     sb.from("messages").upsert(
       {
         id: messageId,
@@ -80,6 +81,7 @@ async function sendAndRecord(
         body: body.slice(0, 5000),
         status: "sent",
         sent_by_user: true,
+        sent_by_id: me.memberId,
         source: `portal:${me.name}`,
         occurred_at: now.toISOString(),
         email_meta:
@@ -89,8 +91,9 @@ async function sendAndRecord(
     ),
     sent.messageId
       ? sb.from("ghl_messages").upsert({ id: sent.messageId, direction: "outbound" }, { onConflict: "id", ignoreDuplicates: true })
-      : Promise.resolve(),
+      : Promise.resolve({ error: null }),
   ]);
+  for (const { error } of recorded) if (error) console.error("sent, but couldn't record it on the thread", client.id, error);
 
   // Replying answers whatever the client was waiting on.
   // The message has already gone, so a failure here is logged rather than reported as a failed send.
@@ -109,7 +112,7 @@ async function sendUsage(sb: Db, me: SessionMember): Promise<SendUsage> {
     sb
       .from("messages")
       .select("client_id")
-      .eq("source", `portal:${me.name}`)
+      .eq("sent_by_id", me.memberId)
       .eq("direction", "outbound")
       .in("channel", ["Text", "Email"]) // logged calls aren't sends
       .gte("occurred_at", hourAgo)

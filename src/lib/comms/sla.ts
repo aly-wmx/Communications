@@ -132,6 +132,15 @@ export function escalateThreshold(c: ClientContact, s: SlaSettings): number {
   return c.priority === 'Urgent' ? s.urgentEscalateMinutes : s.escalateMinutes;
 }
 
+/** History line written when an item is reopened; the response clock restarts from the latest one. */
+export const REOPENED_EVENT = 'Reopened';
+
+/** When the client started waiting this time: when it came in, or when it was last reopened. */
+export function waitingSince(c: ClientContact): string {
+  const reopened = c.history.filter((e) => e.message === REOPENED_EVENT).map((e) => e.at).sort().at(-1);
+  return reopened && reopened > c.receivedAt ? reopened : c.receivedAt;
+}
+
 export function slaState(c: ClientContact, s: SlaSettings, now: Date): SlaState {
   const escalateAfter = escalateThreshold(c, s);
   // The clock stops at the first response; a resolved item nobody replied to stops when it was resolved.
@@ -140,7 +149,8 @@ export function slaState(c: ClientContact, s: SlaSettings, now: Date): SlaState 
     : c.status === 'Resolved' && c.resolvedAt
       ? new Date(c.resolvedAt)
       : now;
-  const waitedMinutes = businessMinutesBetween(new Date(c.receivedAt), end, s.businessHours, s.timeZone);
+  // Time it sat resolved doesn't count: a reopened item starts a fresh wait.
+  const waitedMinutes = businessMinutesBetween(new Date(waitingSince(c)), end, s.businessHours, s.timeZone);
 
   if (c.firstResponseAt) return { stage: 'responded', waitedMinutes, minutesToNext: null, escalateAfter };
   if (c.status !== 'Open') return { stage: 'paused', waitedMinutes, minutesToNext: null, escalateAfter };

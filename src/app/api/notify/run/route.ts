@@ -13,14 +13,21 @@ const json = (status: number, body: unknown) =>
 
 async function handler(req: Request): Promise<Response> {
   if (!cronSecretOk(req)) return json(401, { error: "Unauthorized" });
+  const sb = serviceDb();
+  // Separately, so a failure in one step never holds up the other.
+  let engine: Awaited<ReturnType<typeof runEngine>> | { error: string };
   try {
-    const sb = serviceDb();
-    const engine = await runEngine(sb);
-    const delivered = await dispatchPending(sb);
-    return json(200, { ok: true, ...engine, ...delivered });
+    engine = await runEngine(sb);
   } catch (err) {
-    console.error("notify run failed", err);
-    return json(500, { ok: false, error: err instanceof Error ? err.message : "Notification run failed." });
+    console.error("notify run: reminders/escalations failed", err);
+    engine = { error: err instanceof Error ? err.message : "Reminders and escalations failed." };
+  }
+  try {
+    const delivered = await dispatchPending(sb);
+    return json("error" in engine ? 500 : 200, { ok: !("error" in engine), ...engine, ...delivered });
+  } catch (err) {
+    console.error("notify run: delivery failed", err);
+    return json(500, { ok: false, ...engine, error: err instanceof Error ? err.message : "Notification delivery failed." });
   }
 }
 

@@ -85,6 +85,19 @@ describe('eventFromApiMessage', () => {
     expect(answered).toMatchObject({ direction: 'outbound', channel: 'Call', answeredCall: true, messageId: 'm2' });
   });
 
+  it("doesn't stop the clock for a call that's still ringing or never connected", () => {
+    const call = (status: string, duration?: number) => ({
+      id: 'm2', direction: 'inbound', messageType: 'TYPE_CALL', dateAdded: at, meta: { call: { status, duration } },
+    });
+    expect(eventFromApiMessage(conv, call('ringing'), now)).toBeNull();
+    expect(eventFromApiMessage(conv, call('queued'), now)).toBeNull();
+    expect(eventFromApiMessage(conv, call('initiated'), now)).toBeNull();
+    expect(eventFromApiMessage(conv, call('in-progress'), now)?.answeredCall).toBe(true);
+    // GHL sometimes leaves the status empty: a call with any duration was answered, one without wasn't.
+    expect(eventFromApiMessage(conv, call('', 95), now)?.answeredCall).toBe(true);
+    expect(eventFromApiMessage(conv, call(''), now)?.channel).toBe('Missed call');
+  });
+
   it('counts outbound only when a person sent it', () => {
     const out = { id: 'm3', direction: 'outbound', messageType: 'TYPE_SMS', body: 'On our way', dateAdded: at };
     expect(eventFromApiMessage(conv, out, now)).toBeNull();

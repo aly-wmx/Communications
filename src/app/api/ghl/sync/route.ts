@@ -5,6 +5,7 @@ import { htmlToText } from "@/lib/comms/outbound";
 import { teamGhlContactIds } from "@/lib/comms/notify-store";
 import { cronSecretOk, ensureClient, ghlAccounts, recordGhlEvent, serviceDb, storeMessages, type Db } from "@/lib/comms/ghl-store";
 import type { Json } from "@/lib/supabase/database.types";
+import { randomUUID } from "node:crypto";
 
 /**
  * Pulls recent GoHighLevel activity into the portal. Called once a minute by a
@@ -69,8 +70,8 @@ interface SyncState {
  * crashed run's lock expires on its own). If the lock itself errors, run anyway:
  * a missed sync is worse than a rare overlap, which the claims already make safe.
  */
-async function takeLock(sb: Db, key: string): Promise<boolean> {
-  const { data, error } = await sb.rpc("take_integration_lock", { lock_key: key, ttl_seconds: LOCK_SECONDS });
+async function takeLock(sb: Db, key: string, holder: string): Promise<boolean> {
+  const { data, error } = await sb.rpc("take_integration_lock", { lock_key: key, ttl_seconds: LOCK_SECONDS, holder });
   if (error) {
     console.warn("ghl sync: lock unavailable, running without it", error.message);
     return true;
@@ -78,8 +79,9 @@ async function takeLock(sb: Db, key: string): Promise<boolean> {
   return data === true;
 }
 
-async function releaseLock(sb: Db, key: string) {
-  await sb.rpc("release_integration_lock", { lock_key: key });
+/** Only frees the lock if this run still holds it (a run that overran mustn't free a newer run's lock). */
+async function releaseLock(sb: Db, key: string, holder: string) {
+  await sb.rpc("release_integration_lock", { lock_key: key, holder });
 }
 
 /** Every conversation changed since `since`, oldest first, paging GHL's newest-first list. */
@@ -174,7 +176,8 @@ async function syncAccount(sb: Db, account: GhlAccount, check: boolean, deadline
     }
   }
 
-  if (!(await takeLock(sb, stateKey))) {
+  const holder = randomUUID();
+  if (!(await takeLock(sb, stateKey, holder))) {
     return { status: 200, body: { ok: true, skipped: "Another sync run is still going." } };
   }
   const outOfTime = () => Date.now() > deadline;
@@ -346,7 +349,7 @@ async function syncAccount(sb: Db, account: GhlAccount, check: boolean, deadline
     await saveState(sb, stateKey, { ...prev, lastRunAt: startedAt.toISOString(), lastError: message, lastCounts: counts });
     return { status: err instanceof GhlError ? 502 : 500, body: { ok: false, error: message, ...counts } };
   } finally {
-    await releaseLock(sb, stateKey);
+    await releaseLock(sb, stateKey, holder);
   }
 }
 
