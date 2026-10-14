@@ -9,6 +9,7 @@ import { formatMinutes } from "@/lib/comms/sla";
 import { createClient } from "@/lib/supabase/server";
 import { BarList, ColumnChart } from "./Charts";
 import { NoBusiness } from "@/components/NoBusiness";
+import { Download } from "lucide-react";
 
 const MAX_WEEKS = 16;
 const mins = (m: number | null) => (m == null ? "—" : formatMinutes(m));
@@ -47,8 +48,8 @@ export default async function ReportsPage({ searchParams }: PageProps<"/dashboar
         description={`How quickly clients get a first response. Times count business hours (${(sla.timeZone || "UTC").replace(/_/g, " ")}); the target is ${target}. Spam and archived clients are left out.`}
       >
         {exportable && (
-          <a href={`/api/export/contacts?range=${range}`} className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-zinc-400">
-            ⬇ Export CSV
+          <a href={`/api/export/contacts?range=${range}`} className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-zinc-400">
+            <Download aria-hidden className="size-3.5" /> Export CSV
           </a>
         )}
       </PageHeader>
@@ -59,7 +60,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/dashboar
             key={k}
             href={`/dashboard/reports?range=${k}`}
             aria-current={range === k ? "page" : undefined}
-            className={`rounded-full px-3 py-1 ${range === k ? "bg-[#1C2B47] text-white" : "border border-zinc-300 bg-white text-zinc-600"}`}
+            className={`rounded-full px-3 py-1 ${range === k ? "bg-navy text-white" : "border border-zinc-300 bg-white text-zinc-600"}`}
           >
             {REPORT_RANGES[k]}
           </Link>

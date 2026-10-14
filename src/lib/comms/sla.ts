@@ -47,7 +47,7 @@ function zoneOffset(date: Date, timeZone: string): number {
 }
 
 /** The instant when the clock in `timeZone` reads that date and time. */
-function zonedTime(year: number, month: number, day: number, hour: number, minute: number, timeZone: string): number {
+export function zonedTime(year: number, month: number, day: number, hour: number, minute: number, timeZone: string): number {
   const guess = Date.UTC(year, month - 1, day, hour, minute);
   const first = guess - zoneOffset(new Date(guess), timeZone);
   // Re-check at the result in case a daylight-saving change sits between.

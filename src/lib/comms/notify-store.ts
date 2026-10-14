@@ -2,13 +2,25 @@ import "server-only";
 import { escalate, reminderDue } from "./contacts";
 import { addGhlTags, findGhlContactByEmail, ghlConfig, ghlContactEmail, GhlError, sendGhlMessage, upsertGhlContact } from "./ghl-api";
 import type { Db } from "./ghl-store";
-import { DEFAULT_DELIVERY, escapeSlack, planEscalation, planReminder, type DeliveryRules, type PlanContext, type PlanMember, type PlannedNotification } from "./notify-plan";
+import {
+  DEFAULT_DELIVERY,
+  escapeSlack,
+  planEscalation,
+  planReminder,
+  planTicketDue,
+  type DeliveryRules,
+  type PlanContext,
+  type PlanMember,
+  type PlannedNotification,
+} from "./notify-plan";
 import { textToHtml } from "./outbound";
 import { contactFromRow, contactPatch, slaFromJson } from "./rows";
 import { needsEscalation, slaState } from "./sla";
 import type { ClientContact, SlaSettings, TeamMember } from "./types";
 import type { Json } from "@/lib/supabase/database.types";
-import { conversationHref } from "@/lib/links";
+import { conversationHref, ticketHref } from "@/lib/links";
+import { formatStamp } from "@/lib/format-time";
+import { DUE_SOON_MS, dueState } from "@/lib/tickets";
 
 /** Saving, sending and scheduling notifications. Server only (service role). */
 
@@ -58,11 +70,19 @@ export function planContext(c: ClientContact, clientName: string, sla: SlaSettin
 export async function saveNotifications(
   sb: Db,
   planned: PlannedNotification[],
-  about: { contactId?: string; clientId?: string; link?: string; /** Send by email/Slack whatever the kind (test messages). */ alwaysSend?: boolean },
+  about: {
+    contactId?: string;
+    clientId?: string;
+    ticketId?: string;
+    link?: string;
+    /** Send by email/Slack whatever the kind (test messages). */
+    alwaysSend?: boolean;
+  },
 ): Promise<number> {
   if (!planned.length) return 0;
   const rules = about.alwaysSend ? null : await deliveryRules(sb);
-  const link = about.link ?? (about.clientId ? conversationHref(about.clientId) : "/dashboard/inbox");
+  const link =
+    about.link ?? (about.ticketId ? ticketHref(about.ticketId) : about.clientId ? conversationHref(about.clientId) : "/dashboard/inbox");
   const { error } = await sb.from("notifications").insert(
     planned.map((p) => ({
       recipient_id: p.recipientId,
@@ -73,6 +93,7 @@ export async function saveNotifications(
       link,
       contact_id: about.contactId ?? null,
       client_id: about.clientId ?? null,
+      ticket_id: about.ticketId ?? null,
       // Portal-only kinds are never picked up by the email/Slack sender.
       always_send: Boolean(about.alwaysSend),
       ...(rules && !rules.dm.includes(p.kind) ? { slack_status: "skipped" as const } : {}),
@@ -157,7 +178,7 @@ async function openContactsSince(sb: Db, startedAt: string) {
   }
 }
 
-export async function runEngine(sb: Db, now = new Date()): Promise<{ reminded: number; escalated: number }> {
+export async function runEngine(sb: Db, now = new Date()): Promise<{ reminded: number; escalated: number; ticketReminders: number }> {
   const startedAt = await engineStart(sb, now);
   const [rows, { data: settings, error: settingsError }, team] = await Promise.all([
     openContactsSince(sb, startedAt),
@@ -217,7 +238,8 @@ export async function runEngine(sb: Db, now = new Date()): Promise<{ reminded: n
       }
     }
   }
-  return { reminded, escalated };
+  const ticketReminders = await remindTickets(sb, members, sla.timeZone || "UTC", now);
+  return { reminded, escalated, ticketReminders };
 }
 
 // ---------- Delivery: Slack DMs and email through GoHighLevel ----------
@@ -435,4 +457,48 @@ export async function dispatchPending(sb: Db, limit = 25): Promise<{ slack: numb
     await sb.from("notifications").update(patch).eq("id", n.id);
   }
   return { ...counts, channel };
+}
+
+/**
+ * Tickets due within a day, or past due: one reminder each to the assignee.
+ * Whether a ticket is due is worked out from due_at here; the *_notified_at
+ * columns only record that the reminder went out. Claiming the row first means
+ * overlapping runs never both send it.
+ */
+async function remindTickets(sb: Db, team: PlanMember[], timeZone: string, now: Date): Promise<number> {
+  const { data, error } = await sb
+    .from("tickets")
+    .select("id, title, client_id, assignee_id, created_by, due_at, status, due_soon_notified_at, overdue_notified_at")
+    .neq("status", "done")
+    .not("due_at", "is", null)
+    .lte("due_at", new Date(now.getTime() + DUE_SOON_MS).toISOString())
+    .order("due_at")
+    .limit(500);
+  if (error) throw error;
+
+  let sent = 0;
+  for (const t of data ?? []) {
+    const state = dueState({ dueAt: t.due_at, status: t.status === "done" ? "done" : "todo" }, now);
+    const kind = state === "overdue" && !t.overdue_notified_at ? "overdue" : state === "due_soon" && !t.due_soon_notified_at ? "due_soon" : null;
+    if (!kind) continue;
+    const column = kind === "overdue" ? "overdue_notified_at" : "due_soon_notified_at";
+    const claim = sb.from("tickets").update({ [column]: now.toISOString() } as { overdue_notified_at: string } | { due_soon_notified_at: string });
+    const { data: claimed } = await claim.eq("id", t.id).is(column, null).select("id");
+    if (!claimed?.length) continue;
+
+    const planned = planTicketDue(
+      team,
+      { title: t.title, assigneeId: t.assignee_id, createdBy: t.created_by, dueLabel: formatStamp(t.due_at!, timeZone, "dateTime") },
+      kind,
+    );
+    try {
+      await saveNotifications(sb, planned, { ticketId: t.id, clientId: t.client_id ?? undefined });
+      sent += planned.length;
+    } catch (err) {
+      // Let go of the claim so the next run tries again.
+      console.error("ticket reminder failed; will retry", t.id, err);
+      await sb.from("tickets").update({ [column]: null } as { overdue_notified_at: null } | { due_soon_notified_at: null }).eq("id", t.id);
+    }
+  }
+  return sent;
 }

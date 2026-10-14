@@ -11,22 +11,19 @@ const MAX_PAGES = 100;
 
 type ContactRow = Database["public"]["Tables"]["contacts"]["Row"];
 
-/**
- * Every contact for one business (archived and spam clients left out), plus the
- * escalation matrix. RLS limits this to team members. Cached per request, so the
- * layout's badges and the page share one load instead of reading twice.
- */
-export const loadQueue = cache(async (businessId: string): Promise<{ contacts: ClientContact[]; sla: SlaSettings }> => {
+async function load(businessId: string, onlyOpen: boolean): Promise<{ contacts: ClientContact[]; sla: SlaSettings }> {
   const supabase = await createClient();
   const rowsPromise = (async () => {
     const all: ContactRow[] = [];
     for (let page = 0; page < MAX_PAGES; page++) {
       // The inner join filters by business; the joined column itself isn't needed.
-      const { data, error } = await supabase
+      let query = supabase
         .from("contacts")
         .select("*, clients!inner(business_id, archived_at)")
         .eq("clients.business_id", businessId)
-        .is("clients.archived_at", null)
+        .is("clients.archived_at", null);
+      if (onlyOpen) query = query.neq("status", "Resolved");
+      const { data, error } = await query
         .order("received_at", { ascending: false })
         .order("id")
         .range(page * PAGE, page * PAGE + PAGE - 1);
@@ -46,4 +43,16 @@ export const loadQueue = cache(async (businessId: string): Promise<{ contacts: C
     contacts: rows.map((row) => contactFromRow(row)),
     sla: slaFromJson(settings?.sla),
   };
-});
+}
+
+/**
+ * Every contact for one business (archived and spam clients left out), plus the
+ * escalation matrix. RLS limits this to team members. Cached per request.
+ */
+export const loadQueue = cache((businessId: string) => load(businessId, false));
+
+/**
+ * Only what's still open (not resolved): all the sidebar badges need. Kept separate
+ * so pages that don't show the queue don't load every resolved item behind it.
+ */
+export const loadOpenQueue = cache((businessId: string) => load(businessId, true));

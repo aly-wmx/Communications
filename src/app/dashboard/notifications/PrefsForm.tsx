@@ -13,7 +13,11 @@ export interface Prefs {
 const KIND_LABEL: Record<string, string> = {
   escalation: "escalations",
   picked_up: "pick-ups",
+  assigned: "things assigned to you",
   mention: "mentions and reply flags",
+  due_soon: "tickets due soon",
+  overdue: "overdue tickets",
+  ticket_done: "finished tickets",
   reminder: "reminders",
   new_message: "new client messages",
 };
@@ -61,13 +65,13 @@ export function PrefsForm({
     setMessage(null);
     startTransition(async () => {
       const r = await sendTestNotification();
-      setMessage(r.ok ? { text: "Test sent — check Slack, your inbox, and the 🔔 bell. Results appear below.", ok: true } : { text: r.error, ok: false });
+      setMessage(r.ok ? { text: "Test sent — check Slack, your inbox, and the bell. Results appear below.", ok: true } : { text: r.error, ok: false });
     });
   }
 
   const row = (key: keyof Prefs, label: string, hint: string, disabledReason = "") => (
     <label className={`flex items-start gap-3 py-2 ${disabledReason ? "opacity-60" : ""}`}>
-      <input type="checkbox" checked={prefs[key]} onChange={() => toggle(key)} disabled={pending} className="mt-1 size-4 accent-[#B08D57]" />
+      <input type="checkbox" checked={prefs[key]} onChange={() => toggle(key)} disabled={pending} className="mt-1 size-4 accent-gold" />
       <span>
         <span className="block text-sm font-medium text-zinc-900">{label}</span>
         <span className="block text-xs text-zinc-500">{disabledReason || hint}</span>
@@ -80,7 +84,7 @@ export function PrefsForm({
       <div>
         <h2 className="text-sm font-semibold text-zinc-900">How to reach you</h2>
         <p className="text-xs text-zinc-500">
-          The 🔔 bell and pop-ups show everything. An admin chooses what also goes out by Slack and email (Settings → Notifications).
+          The bell and pop-ups show everything. An admin chooses what also goes out by Slack and email (Settings → Notifications).
         </p>
       </div>
       <div className="divide-y divide-zinc-100">
@@ -98,7 +102,7 @@ export function PrefsForm({
         </div>
       )}
       {message && (
-        <p role={message.ok ? "status" : "alert"} className={`text-sm ${message.ok ? "text-[#3F7A5C]" : "text-red-600"}`}>
+        <p role={message.ok ? "status" : "alert"} className={`text-sm ${message.ok ? "text-success" : "text-red-600"}`}>
           {message.text}
         </p>
       )}

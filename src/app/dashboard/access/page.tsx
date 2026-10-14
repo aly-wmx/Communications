@@ -4,6 +4,7 @@ import { getSessionMember } from "@/lib/auth";
 import { ACTIONS, PAGES, ROLE_DESCRIPTIONS, ROLE_LABELS, ROLES, isRole, type ActionAccess, type Role } from "@/lib/roles";
 import { DEPARTMENTS } from "@/lib/stages";
 import { createClient } from "@/lib/supabase/server";
+import { Lock } from "lucide-react";
 
 const KIND_LABEL: Record<string, string> = {
   escalation: "escalations",
@@ -19,7 +20,7 @@ const kinds = (list: string[]) => {
 
 function Mark({ yes, label }: { yes: boolean; label?: string }) {
   return yes ? (
-    <span className="inline-flex items-center gap-1 font-semibold text-[#3F7A5C]">
+    <span className="inline-flex items-center gap-1 font-semibold text-success">
       <span aria-hidden>✓</span>
       {label ?? <span className="sr-only">Yes</span>}
     </span>
@@ -95,7 +96,7 @@ export default async function AccessPage({ searchParams }: PageProps<"/dashboard
           Summary
         </h2>
         <div className="flex flex-wrap items-baseline gap-3">
-          <span className="rounded-full bg-[#1C2B47] px-3 py-1 text-sm font-semibold text-white">{ROLE_LABELS[role]}</span>
+          <span className="rounded-full bg-navy px-3 py-1 text-sm font-semibold text-white">{ROLE_LABELS[role]}</span>
           <p className="text-sm text-zinc-700">{ROLE_DESCRIPTIONS[role]}</p>
         </div>
         <dl className="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
@@ -130,7 +131,7 @@ export default async function AccessPage({ searchParams }: PageProps<"/dashboard
               Email: {emailOn && member.email ? kinds(rules?.email_kinds ?? ["escalation"]) : "off"} · Slack DM:{" "}
               {slackOn && member.slack_user_id ? kinds(rules?.dm_kinds ?? ["escalation"]) : member.slack_user_id ? "off" : "no Slack member ID yet"}
               {self && (
-                <Link href="/dashboard/notifications" className="ml-2 text-xs font-semibold text-[#8A6A3A] hover:underline">
+                <Link href="/dashboard/notifications" className="ml-2 text-xs font-semibold text-gold-ink hover:underline">
                   Change →
                 </Link>
               )}
@@ -145,11 +146,11 @@ export default async function AccessPage({ searchParams }: PageProps<"/dashboard
         </h2>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded-lg border border-zinc-200 bg-white p-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-[#3F7A5C]">{who} can open</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-success">{who} can open</h3>
             <ul className="mt-2 space-y-2">
               {open.map((p) => (
                 <li key={p.href} className="text-sm">
-                  <Link href={p.href} className="font-medium text-zinc-900 hover:text-[#8A6A3A] hover:underline">
+                  <Link href={p.href} className="font-medium text-zinc-900 hover:text-gold-ink hover:underline">
                     {p.label}
                   </Link>
                   <p className="text-xs text-zinc-600">{p.description}</p>
@@ -166,7 +167,7 @@ export default async function AccessPage({ searchParams }: PageProps<"/dashboard
                 {closed.map((p) => (
                   <li key={p.href} className="text-sm">
                     <span className="font-medium text-zinc-700">
-                      <span aria-hidden>🔒 </span>
+                      <Lock aria-hidden className="mr-1 inline size-3.5 align-[-2px]" />
                       {p.label}
                     </span>
                     <p className="text-xs text-zinc-600">{p.description}</p>
@@ -218,7 +219,7 @@ export default async function AccessPage({ searchParams }: PageProps<"/dashboard
               <tr className="border-b border-zinc-200 text-left text-xs text-zinc-600">
                 <th className="px-4 py-2 font-semibold">Page or action</th>
                 {ROLES.map((r) => (
-                  <th key={r} className={`w-28 px-2 py-2 text-center font-semibold ${r === role ? "bg-[#B08D57]/10 text-zinc-900" : ""}`}>
+                  <th key={r} className={`w-28 px-2 py-2 text-center font-semibold ${r === role ? "bg-gold/10 text-zinc-900" : ""}`}>
                     {ROLE_LABELS[r]}
                     {r === role && <span className="block text-[11px] font-normal text-zinc-600">{self ? "you" : member.name}</span>}
                   </th>
@@ -238,7 +239,7 @@ export default async function AccessPage({ searchParams }: PageProps<"/dashboard
                       )}
                     </td>
                     {ROLES.map((r) => (
-                      <td key={r} className={`px-2 py-2 text-center ${r === role ? "bg-[#B08D57]/10" : ""}`}>
+                      <td key={r} className={`px-2 py-2 text-center ${r === role ? "bg-gold/10" : ""}`}>
                         <Mark yes={row.roles.includes(r)} />
                       </td>
                     ))}
@@ -256,7 +257,7 @@ export default async function AccessPage({ searchParams }: PageProps<"/dashboard
         {me.role === "admin" && self ? (
           <>
             , or change roles and switches on the{" "}
-            <Link href="/dashboard/team" className="font-semibold text-[#8A6A3A] hover:underline">
+            <Link href="/dashboard/team" className="font-semibold text-gold-ink hover:underline">
               Team page
             </Link>
             .

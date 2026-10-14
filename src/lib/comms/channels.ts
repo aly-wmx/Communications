@@ -2,7 +2,6 @@
 
 export interface ChannelStyle {
   label: string;
-  icon: string;
   /** Small tag: background + text. */
   tag: string;
   /** Solid dot / left border colour. */
@@ -11,12 +10,12 @@ export interface ChannelStyle {
 }
 
 export const CHANNEL_STYLES: Record<string, ChannelStyle> = {
-  Text: { label: "Text", icon: "💬", tag: "bg-sky-50 text-sky-800", dot: "bg-sky-500", border: "border-sky-400" },
-  Email: { label: "Email", icon: "✉", tag: "bg-violet-50 text-violet-800", dot: "bg-violet-500", border: "border-violet-400" },
-  "Portal message": { label: "Portal", icon: "🗨", tag: "bg-teal-50 text-teal-800", dot: "bg-teal-500", border: "border-teal-400" },
-  Call: { label: "Call", icon: "📞", tag: "bg-zinc-100 text-zinc-700", dot: "bg-zinc-500", border: "border-zinc-400" },
-  "Missed call": { label: "Missed call", icon: "📞", tag: "bg-red-50 text-red-700", dot: "bg-red-500", border: "border-red-400" },
-  Voicemail: { label: "Voicemail", icon: "📼", tag: "bg-amber-50 text-amber-800", dot: "bg-amber-500", border: "border-amber-400" },
+  Text: { label: "Text", tag: "bg-sky-50 text-sky-800", dot: "bg-sky-500", border: "border-sky-400" },
+  Email: { label: "Email", tag: "bg-violet-50 text-violet-800", dot: "bg-violet-500", border: "border-violet-400" },
+  "Portal message": { label: "Portal", tag: "bg-teal-50 text-teal-800", dot: "bg-teal-500", border: "border-teal-400" },
+  Call: { label: "Call", tag: "bg-zinc-100 text-zinc-700", dot: "bg-zinc-500", border: "border-zinc-400" },
+  "Missed call": { label: "Missed call", tag: "bg-red-50 text-red-700", dot: "bg-red-500", border: "border-red-400" },
+  Voicemail: { label: "Voicemail", tag: "bg-amber-50 text-amber-800", dot: "bg-amber-500", border: "border-amber-400" },
 };
 
 export function channelStyle(channel: string): ChannelStyle {

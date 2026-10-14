@@ -84,7 +84,7 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, Props>(function M
                   e.preventDefault();
                   insert(t.name);
                 }}
-                className={`w-full px-3 py-1.5 text-left ${i === highlight ? "bg-[#B08D5714] font-semibold" : "hover:bg-zinc-50"}`}
+                className={`w-full px-3 py-1.5 text-left ${i === highlight ? "bg-gold/8 font-semibold" : "hover:bg-zinc-50"}`}
               >
                 @{t.name}
               </button>

@@ -75,7 +75,7 @@ function LoginForm() {
           name="remember"
           checked={remember}
           onChange={(e) => setRemember(e.target.checked)}
-          className="size-4 accent-[#1C2B47]"
+          className="size-4 accent-navy"
         />
         Stay signed in
         <span className="text-xs text-zinc-500">— untick on shared computers</span>
@@ -109,7 +109,7 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <main className="relative flex flex-1 lg:grid lg:grid-cols-2">
-      <div className="hidden h-full flex-col justify-between bg-[#1C2B47] p-10 lg:flex">
+      <div className="hidden h-full flex-col justify-between bg-navy p-10 lg:flex">
         <WmxWordmark variant="light" />
         <p className="max-w-xs text-sm text-white/70">
           Every client call, text and message — who owns it, how long it’s waited, and when it escalates.

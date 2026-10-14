@@ -51,7 +51,7 @@ export function TeamTable({ members, meId }: { members: Member[]; meId: string }
       {message && (
         <p
           role={message.tone === "error" ? "alert" : "status"}
-          className={`border-t border-zinc-200 px-3 py-2 text-xs ${message.tone === "error" ? "text-red-600" : "text-[#3F7A5C]"}`}
+          className={`border-t border-zinc-200 px-3 py-2 text-xs ${message.tone === "error" ? "text-red-600" : "text-success"}`}
         >
           {message.text}
         </p>
@@ -61,7 +61,7 @@ export function TeamTable({ members, meId }: { members: Member[]; meId: string }
           type="button"
           disabled={pending}
           onClick={handleAdd}
-          className="text-xs font-semibold text-[#8A6A3A] hover:underline disabled:opacity-50"
+          className="text-xs font-semibold text-gold-ink hover:underline disabled:opacity-50"
         >
           + Add person
         </button>

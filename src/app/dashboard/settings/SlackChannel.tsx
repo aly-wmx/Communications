@@ -30,7 +30,7 @@ export function SlackChannel({ channelId, connected }: { channelId: string; conn
         <span className="mt-1 block text-[11px] text-zinc-500">In Slack: open the channel → channel name → About → Channel ID at the bottom.</span>
       </label>
       {message && (
-        <p role={message.ok ? "status" : "alert"} className={`text-sm ${message.ok ? "text-[#3F7A5C]" : "text-red-600"}`}>
+        <p role={message.ok ? "status" : "alert"} className={`text-sm ${message.ok ? "text-success" : "text-red-600"}`}>
           {message.text}
         </p>
       )}
@@ -44,7 +44,7 @@ export function SlackChannel({ channelId, connected }: { channelId: string; conn
               setMessage(r.ok ? { text: "Saved.", ok: true } : { text: r.error, ok: false });
             })
           }
-          className="rounded-md bg-[#1C2B47] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
+          className="rounded-md bg-navy px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
         >
           Save
         </button>

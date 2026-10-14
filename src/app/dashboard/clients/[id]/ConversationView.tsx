@@ -15,6 +15,14 @@ import { isStage } from "@/lib/stages";
 import { resolveGhlAccounts } from "@/lib/comms/ghl-accounts";
 import { formatStamp } from "@/lib/format-time";
 import { businessTimeZone } from "@/lib/time-zone";
+import { Phone } from "lucide-react";
+import Link from "next/link";
+import { Card } from "@/components/ui/card";
+import { StatusPill } from "@/components/ui/status-pill";
+import { canAssignTickets } from "@/lib/roles";
+import { COLUMN_LABELS, dueState, ticketFromRow } from "@/lib/tickets";
+import { ticketHref } from "@/lib/links";
+import { NewTicket } from "../../board/NewTicket";
 
 const PAGE_SIZE = 300;
 
@@ -150,6 +158,14 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
       : "";
 
   const tz = await businessTimeZone();
+  const { data: ticketRows } = await supabase
+    .from("tickets")
+    .select("*")
+    .eq("client_id", id)
+    .neq("status", "done")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  const clientTickets = (ticketRows ?? []).map(ticketFromRow);
   const when = (iso: string) => formatStamp(iso, tz);
   const nameOf = (id?: string) => (team ?? []).find((t) => t.id === id)?.name ?? "someone";
   const openContacts: OpenContact[] = (open ?? []).map((c) => {
@@ -174,7 +190,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
         {/* Chat box */}
         <section className="flex min-h-[28rem] flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
           <header className="flex flex-wrap items-center gap-3 border-b border-zinc-200 px-4 py-3">
-            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[#1C2B47] text-sm font-bold text-white">
+            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-navy text-sm font-bold text-white">
               {initials(client.name)}
             </span>
             <div className="min-w-0 flex-1">
@@ -184,7 +200,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
                   <>
                     <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700">Waiting on us</span>
                     {/* Below xl the Resolve / Escalate / Assign panel is under the chat. */}
-                    <a href="#item-actions" className="text-xs font-semibold text-[#8A6A3A] hover:underline xl:hidden">
+                    <a href="#item-actions" className="text-xs font-semibold text-gold-ink hover:underline xl:hidden">
                       Actions ↓
                     </a>
                   </>
@@ -199,9 +215,9 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
               {client.phone && (
                 <a
                   href={`tel:${client.phone}`}
-                  className="rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:border-zinc-400"
+                  className="inline-flex items-center gap-1 rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:border-zinc-400"
                 >
-                  📞 Call
+                  <Phone aria-hidden className="size-3.5" /> Call
                 </a>
               )}
               {ghlHref && (
@@ -209,7 +225,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
                   href={ghlHref}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-full bg-[#8A6A3A] px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110"
+                  className="rounded-full bg-gold-ink px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110"
                 >
                   Reply in GoHighLevel ↗
                 </a>
@@ -242,6 +258,43 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
               </section>
             )}
           </div>
+          <Card
+            title="Tickets"
+            action={
+              me && (
+                <NewTicket
+                  team={(team ?? []).map((t) => ({ id: t.id, name: t.name }))}
+                  meId={me.memberId}
+                  canAssignOthers={canAssignTickets(me.role)}
+                  client={{ id: client.id, name: client.name }}
+                  label="Ticket"
+                  compact
+                />
+              )
+            }
+          >
+            {clientTickets.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-zinc-500">No open tickets for this client.</p>
+            ) : (
+              <ul className="divide-y divide-zinc-100">
+                {clientTickets.map((t) => {
+                  const due = dueState(t, new Date());
+                  return (
+                    <li key={t.id} className="px-4 py-2.5">
+                      <Link href={ticketHref(t.id)} className="text-sm font-medium text-zinc-900 hover:underline">
+                        {t.title}
+                      </Link>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
+                        {COLUMN_LABELS[t.status]} · {t.assigneeId ? nameOf(t.assigneeId) : "Unassigned"}
+                        {due === "overdue" && <StatusPill tone="danger">Overdue</StatusPill>}
+                        {due !== "overdue" && t.dueAt && <span>· due {formatStamp(t.dueAt, tz, "day")}</span>}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Card>
           <StagePicker
             key={client.stage ?? "none"}
             clientId={client.id}

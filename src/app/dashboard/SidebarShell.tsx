@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import { UNREAD_EVENT } from "./NotificationBell";
+import { Menu, X } from "lucide-react";
 
 /** Below Tailwind's lg breakpoint the sidebar is a drawer. */
 const DRAWER_QUERY = "(max-width: 1023.98px)";
@@ -73,7 +74,7 @@ export function SidebarShell({
           aria-expanded={open}
           className="relative grid size-10 place-items-center rounded-md border border-zinc-200 text-lg text-zinc-700"
         >
-          ☰
+          <Menu aria-hidden className="size-5" />
           {unread > 0 && (
             <span aria-hidden className="absolute -right-1.5 -top-1.5 min-w-5 rounded-full bg-red-600 px-1 text-center text-[11px] font-semibold leading-5 text-white">
               {unread > 99 ? "99+" : unread}
@@ -103,7 +104,7 @@ export function SidebarShell({
             aria-label="Close menu"
             className="grid size-9 place-items-center text-xl text-zinc-500 hover:text-zinc-700 lg:hidden"
           >
-            ×
+            <X aria-hidden className="size-5" />
           </button>
         </div>
         {children}

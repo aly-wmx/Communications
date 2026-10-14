@@ -2,9 +2,29 @@ import { formatMinutes } from "./sla";
 
 /** Who is notified about what, and the words they see. Pure, so the rules are tested. */
 
-export type NotificationKind = "escalation" | "reminder" | "new_message" | "picked_up" | "mention";
+export type NotificationKind =
+  | "escalation"
+  | "reminder"
+  | "new_message"
+  | "picked_up"
+  | "mention"
+  | "assigned"
+  | "due_soon"
+  | "overdue"
+  | "ticket_done";
 
-export const NOTIFICATION_KINDS: readonly NotificationKind[] = ["escalation", "picked_up", "mention", "reminder", "new_message"];
+/** Same list as the notifications_kind_check and settings_*_valid constraints in the database. */
+export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
+  "escalation",
+  "picked_up",
+  "assigned",
+  "mention",
+  "reminder",
+  "due_soon",
+  "overdue",
+  "ticket_done",
+  "new_message",
+];
 
 export const isNotificationKind = (k: unknown): k is NotificationKind =>
   typeof k === "string" && (NOTIFICATION_KINDS as readonly string[]).includes(k);
@@ -122,4 +142,56 @@ export function planPickedUp(
       body: "You don't need to act on this escalation.",
       urgent: false,
     }));
+}
+
+// ---------- Assignments and tickets ----------
+
+const nameIn = (team: PlanMember[], id: string | null | undefined) => team.find((t) => t.id === id)?.name;
+
+/**
+ * "Assigned to you": a ticket, or a client conversation item. Never to yourself,
+ * and never to someone no longer on the team.
+ */
+export function planAssigned(
+  team: PlanMember[],
+  opts: { assigneeId: string | null; byId: string; what: { kind: "ticket"; title: string } | { kind: "client"; clientName: string }; body?: string; urgent?: boolean },
+): PlannedNotification[] {
+  if (!opts.assigneeId || opts.assigneeId === opts.byId || !nameIn(team, opts.assigneeId)) return [];
+  const by = nameIn(team, opts.byId) ?? "Someone";
+  const title =
+    opts.what.kind === "ticket" ? `${by} assigned you a ticket: ${opts.what.title}` : `${by} assigned ${opts.what.clientName} to you`;
+  return [{ recipientId: opts.assigneeId, kind: "assigned", title, body: quote(opts.body ?? ""), urgent: Boolean(opts.urgent) }];
+}
+
+/** A ticket due within a day, or past due: to its assignee (or, if nobody has it, whoever created it). */
+export function planTicketDue(
+  team: PlanMember[],
+  t: { title: string; assigneeId: string | null; createdBy: string | null; dueLabel: string },
+  kind: "due_soon" | "overdue",
+): PlannedNotification[] {
+  const to = [t.assigneeId, t.assigneeId ? null : t.createdBy].find((id) => id && nameIn(team, id));
+  if (!to) return [];
+  return [
+    {
+      recipientId: to,
+      kind,
+      title: kind === "overdue" ? `Overdue: ${t.title}` : `Due ${t.dueLabel}: ${t.title}`,
+      body: kind === "overdue" ? `It was due ${t.dueLabel}.` : "",
+      urgent: kind === "overdue",
+    },
+  ];
+}
+
+/** A ticket was finished: tell whoever asked for it (unless they finished it themselves). */
+export function planTicketDone(team: PlanMember[], t: { title: string; createdBy: string | null }, byId: string): PlannedNotification[] {
+  if (!t.createdBy || t.createdBy === byId || !nameIn(team, t.createdBy)) return [];
+  return [{ recipientId: t.createdBy, kind: "ticket_done", title: `${nameIn(team, byId) ?? "Someone"} finished: ${t.title}`, body: "", urgent: false }];
+}
+
+/** @mentions in a ticket comment. */
+export function planTicketMentions(team: PlanMember[], t: { title: string }, byId: string, mentionIds: string[], comment: string): PlannedNotification[] {
+  const by = nameIn(team, byId) ?? "Someone";
+  return unique(mentionIds)
+    .filter((id) => id !== byId && nameIn(team, id))
+    .map((recipientId) => ({ recipientId, kind: "mention" as const, title: `${by} mentioned you on ${t.title}`, body: quote(comment), urgent: false }));
 }

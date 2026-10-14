@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { checkSession } from "@/lib/auth";
 import { getBusinessContext } from "@/lib/business";
 import { awaitingPickup, clientsNeedingMe, queueStats } from "@/lib/comms/contacts";
-import { loadQueue } from "@/lib/comms/load";
+import { loadOpenQueue } from "@/lib/comms/load";
 import { ROLE_LABELS } from "@/lib/roles";
 import { isDepartment } from "@/lib/stages";
 import { WmxWordmark } from "@/components/wmx-wordmark";
@@ -11,6 +11,7 @@ import { BusinessSwitcher } from "./BusinessSwitcher";
 import { DashboardNav } from "./DashboardNav";
 import { LiveUpdates } from "./LiveUpdates";
 import { SidebarShell } from "./SidebarShell";
+import { Providers } from "./Providers";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -29,13 +30,21 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const businessNames = Object.fromEntries(businesses.map((b) => [b.id, b.name]));
 
   let needsMeCount = 0;
+  let myTickets = 0;
   let escalationBadge = 0;
   if (current) {
     // Only the sidebar badges: if they can't load, show the app without them rather than an error page.
     try {
-      const { contacts, sla } = await loadQueue(current.id);
+      const { contacts, sla } = await loadOpenQueue(current.id);
       const stats = queueStats(contacts, sla, new Date());
       needsMeCount = clientsNeedingMe(contacts, member);
+      const { count } = await supabase
+        .from("tickets")
+        .select("id", { count: "exact", head: true })
+        .eq("business_id", current.id)
+        .eq("assignee_id", member.memberId)
+        .neq("status", "done");
+      myTickets = count ?? 0;
       escalationBadge = stats.needsEscalation + contacts.filter(awaitingPickup).length;
     } catch (err) {
       console.error("sidebar badges unavailable", err);
@@ -43,11 +52,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F3EE] lg:flex">
+    <Providers>
+    <div className="min-h-screen bg-page lg:flex">
       <SidebarShell brand={<WmxWordmark />} businessName={businesses.length > 1 ? current?.name : undefined}>
         {current && <BusinessSwitcher businesses={businesses} currentId={current.id} />}
 
-        <DashboardNav role={member.role} queueBadge={needsMeCount} escalationBadge={escalationBadge} />
+        <DashboardNav role={member.role} queueBadge={needsMeCount} boardBadge={myTickets} escalationBadge={escalationBadge} />
 
         <div className="mt-auto border-t border-zinc-200 pt-3">
           <LiveUpdates
@@ -76,5 +86,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
       <main className="min-w-0 flex-1 overflow-x-auto px-4 py-4 sm:px-6 sm:py-6">{children}</main>
     </div>
+    </Providers>
   );
 }

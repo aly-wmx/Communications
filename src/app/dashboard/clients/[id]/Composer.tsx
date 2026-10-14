@@ -6,6 +6,8 @@ import { smsSegments } from "@/lib/comms/outbound";
 import { sendReply } from "../../messaging/actions";
 import { addTeamNote } from "../../team-chat/actions";
 import { onRadioKeys } from "@/lib/radio-keys";
+import { Flag, Lock, SendHorizontal } from "lucide-react";
+import { ChannelIcon } from "@/components/ChannelIcon";
 
 /**
  * Reply box: text or email to the client through GoHighLevel, or a team-only
@@ -83,9 +85,9 @@ export function Composer({
             aria-checked={isNote}
             tabIndex={isNote ? 0 : -1}
             onClick={() => setMode("note")}
-            className={`rounded-full px-2.5 py-0.5 font-semibold ${isNote ? "bg-amber-200 text-amber-950 shadow-sm" : "text-zinc-500"}`}
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold ${isNote ? "bg-amber-200 text-amber-950 shadow-sm" : "text-zinc-500"}`}
           >
-            🔒 Team note
+            <Lock aria-hidden className="size-3" /> Team note
           </button>
         </div>
         {!isNote && (["SMS", "Email"] as const).map((c) => {
@@ -97,11 +99,11 @@ export function Composer({
               disabled={!available || pending}
               onClick={() => setChannel(c)}
               title={available ? undefined : `No ${c === "SMS" ? "phone number" : "email"} for this client`}
-              className={`rounded-full px-2.5 py-0.5 font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
-                channel === c ? "bg-[#1C2B47] text-white" : "text-zinc-500 hover:bg-zinc-100"
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+                channel === c ? "bg-navy text-white" : "text-zinc-500 hover:bg-zinc-100"
               }`}
             >
-              {c === "SMS" ? "💬 Text" : "✉ Email"}
+              <ChannelIcon channel={c === "SMS" ? "Text" : "Email"} className="size-3" /> {c === "SMS" ? "Text" : "Email"}
             </button>
           );
         })}
@@ -116,7 +118,7 @@ export function Composer({
 
       {isNote && (
         <label className="mb-2 flex items-center gap-2 text-xs text-amber-900">
-          🚩 Needs a reply from
+          <Flag aria-hidden className="size-3" /> Needs a reply from
           <select
             value={flagFor}
             onChange={(e) => setFlagFor(e.target.value)}
@@ -157,7 +159,7 @@ export function Composer({
           aria-label={isNote ? "Team note" : "Message"}
           disabled={pending}
           className={`max-h-40 min-h-[2.5rem] resize-none rounded-2xl border px-4 py-2 text-base sm:text-sm focus:outline-none ${
-            isNote ? "border-amber-300 bg-white focus:border-amber-500" : "border-zinc-200 bg-[#F7F6F2] focus:border-zinc-400 focus:bg-white"
+            isNote ? "border-amber-300 bg-white focus:border-amber-500" : "border-zinc-200 bg-well focus:border-zinc-400 focus:bg-white"
           }`}
         />
         <button
@@ -165,9 +167,9 @@ export function Composer({
           onClick={send}
           disabled={!ready}
           aria-label="Send"
-          className={`grid size-10 shrink-0 place-items-center rounded-full text-white shadow-sm hover:brightness-110 disabled:opacity-40 ${isNote ? "bg-amber-600" : "bg-[#8A6A3A]"}`}
+          className={`grid size-10 shrink-0 place-items-center rounded-full text-white shadow-sm hover:brightness-110 disabled:opacity-40 ${isNote ? "bg-amber-600" : "bg-gold-ink"}`}
         >
-          {pending ? "…" : "➤"}
+          {pending ? "…" : <SendHorizontal aria-hidden className="size-4" />}
         </button>
       </div>
       {error && (

@@ -13,6 +13,7 @@ import { NewConversation } from "../clients/NewConversation";
 import { canSendMessages } from "@/lib/roles";
 import { NoBusiness } from "@/components/NoBusiness";
 import { formatStamp } from "@/lib/format-time";
+import { Archive } from "lucide-react";
 
 const VIEWS = [
   ["mine", "Needs me"],
@@ -188,7 +189,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
               key={key}
               href={params({ view: key, c: "" })}
               aria-current={view === key ? "page" : undefined}
-              className={`rounded-md px-2.5 py-1 ${view === key ? "bg-[#B08D5712] font-semibold text-[#1C2B47]" : "text-zinc-500 hover:text-zinc-900"}`}
+              className={`rounded-md px-2.5 py-1 ${view === key ? "bg-gold/7 font-semibold text-navy" : "text-zinc-500 hover:text-zinc-900"}`}
             >
               {label}
               {key !== "all" && (
@@ -230,6 +231,10 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
           </button>
         </form>
         <span className="flex-1" />
+        {/* Archived lives here rather than in the sidebar: it's a part of the Inbox people rarely need. */}
+        <Link href="/dashboard/archived" className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2 text-sm text-zinc-600 hover:text-zinc-900">
+          <Archive aria-hidden className="size-4" /> Archived
+        </Link>
         {canSendMessages(me.role) && <NewConversation />}
       </div>
 
@@ -241,7 +246,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
         >
           {rows.length === 0 ? (
             <div className="grid flex-1 place-items-center p-8 text-center text-sm text-zinc-500">
-              {view === "mine" ? "Nothing needs you right now. Nice work." : view === "escalated" ? "No escalations. 🎉" : "No conversations match."}
+              {view === "mine" ? "Nothing needs you right now. Nice work." : view === "escalated" ? "No escalations." : "No conversations match."}
             </div>
           ) : (
             <ul className="flex-1 divide-y divide-zinc-100 overflow-y-auto">
@@ -252,23 +257,23 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
                     <Link
                       href={params({ c: c.id })}
                       aria-current={active ? "true" : undefined}
-                      className={`flex gap-3 px-3 py-2.5 ${active ? "bg-[#B08D5714]" : "hover:bg-zinc-50"} ${c.overdue ? "border-l-4 border-red-600" : c.dueSoon ? "border-l-4 border-amber-400" : "border-l-4 border-transparent"}`}
+                      className={`flex gap-3 px-3 py-2.5 ${active ? "bg-gold/8" : "hover:bg-zinc-50"} ${c.overdue ? "border-l-4 border-red-600" : c.dueSoon ? "border-l-4 border-amber-400" : "border-l-4 border-transparent"}`}
                     >
-                      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#1C2B47]/10 text-xs font-bold text-[#1C2B47]">{initials(c.name)}</span>
+                      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-navy/10 text-xs font-bold text-navy">{initials(c.name)}</span>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-baseline gap-2">
                           <span className={`min-w-0 flex-1 truncate text-sm ${c.waiting ? "font-semibold text-zinc-900" : "text-zinc-800"}`}>{c.name}</span>
                           <span className="shrink-0 text-[11px] tabular-nums text-zinc-500">{shortAgo(c.last_in_at ?? c.last_message_at, now, tz)}</span>
                         </span>
                         <span className="mt-0.5 block truncate text-xs text-zinc-700">
-                          {c.last_in_body || (c.last_in_attachments ? "📎 Photo or file" : c.last_in_at ? "(no text)" : c.last_body || "No messages yet")}
+                          {c.last_in_body || (c.last_in_attachments ? "Photo or file" : c.last_in_at ? "(no text)" : c.last_body || "No messages yet")}
                         </span>
                         {c.last_in_at && (
                           <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-zinc-500">
                             {c.last_in_channel && <ChannelTag channel={c.last_in_channel} />}
                             <span className="tabular-nums">{c.receivedLabel}</span>
                             <span className="text-zinc-500">· {c.sourceLabel}</span>
-                            {c.repliedSince && <span className="font-semibold text-[#3F7A5C]">· ✓ Replied</span>}
+                            {c.repliedSince && <span className="font-semibold text-success">· ✓ Replied</span>}
                           </span>
                         )}
                         <span className="mt-1 flex flex-wrap items-center gap-1">
@@ -297,7 +302,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/dashboard/
         <div className={`${selected ? "flex" : "hidden lg:flex"} min-w-0 flex-1 flex-col gap-3`}>
           {selected ? (
             <>
-              <Link href={params({ c: "" })} className="text-xs font-semibold text-[#8A6A3A] hover:underline lg:hidden">
+              <Link href={params({ c: "" })} className="text-xs font-semibold text-gold-ink hover:underline lg:hidden">
                 ← Back to inbox
               </Link>
               <ConversationView clientId={selected} before={before} basePath={params({ c: selected })} />

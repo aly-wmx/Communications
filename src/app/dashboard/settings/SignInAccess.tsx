@@ -66,7 +66,7 @@ export function SignInAccess({ domains: initialDomains, blocked: initialBlocked 
           aria-label="Add a domain"
           className="w-72 rounded-md border border-zinc-300 px-3 py-1.5 text-base sm:text-sm focus:border-zinc-400 focus:outline-none"
         />
-        <button type="submit" disabled={pending || !draft.trim()} className="rounded-md bg-[#1C2B47] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
+        <button type="submit" disabled={pending || !draft.trim()} className="rounded-md bg-navy px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
           Add domain
         </button>
       </form>
@@ -79,7 +79,7 @@ export function SignInAccess({ domains: initialDomains, blocked: initialBlocked 
             {blocked.map((b) => (
               <li key={b} className="flex items-center justify-between rounded-md bg-zinc-50 px-3 py-1.5 text-sm">
                 {b}
-                <button type="button" disabled={pending} onClick={() => save(domains, blocked.filter((x) => x !== b))} className="text-xs font-semibold text-[#8A6A3A] hover:underline">
+                <button type="button" disabled={pending} onClick={() => save(domains, blocked.filter((x) => x !== b))} className="text-xs font-semibold text-gold-ink hover:underline">
                   Unblock
                 </button>
               </li>
@@ -88,7 +88,7 @@ export function SignInAccess({ domains: initialDomains, blocked: initialBlocked 
         </div>
       )}
       {message && (
-        <p role={message.ok ? "status" : "alert"} className={`text-sm ${message.ok ? "text-[#3F7A5C]" : "text-red-600"}`}>
+        <p role={message.ok ? "status" : "alert"} className={`text-sm ${message.ok ? "text-success" : "text-red-600"}`}>
           {message.text}
         </p>
       )}

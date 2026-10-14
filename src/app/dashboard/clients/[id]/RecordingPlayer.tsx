@@ -24,7 +24,7 @@ export function RecordingPlayer({ messageId, label = "Play" }: { messageId: stri
       <button
         type="button"
         onClick={() => setState("loading")}
-        className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-[#1C2B47] shadow-sm hover:bg-white"
+        className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-navy shadow-sm hover:bg-white"
       >
         ▶ {label}
       </button>

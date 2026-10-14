@@ -11,6 +11,7 @@ import { RecordingPlayer } from "../clients/[id]/RecordingPlayer";
 import { LogCall } from "./LogCall";
 import { NoBusiness } from "@/components/NoBusiness";
 import { conversationHref } from "@/lib/links";
+import { Download, Phone } from "lucide-react";
 
 const OUTCOMES = ["all", "missed", "voicemail", "failed", "connected"] as const;
 
@@ -40,8 +41,8 @@ export default async function CallsPage({ searchParams }: PageProps<"/dashboard/
       <PageHeader title="Call Log" description={`Every call to and from clients — connected, missed, voicemail and failed. Times in ${tz.replace(/_/g, " ")}.`}>
         <div className="flex gap-2">
           {exportable && (
-            <a href={`/api/export/calls?range=${range}`} className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-zinc-400">
-              ⬇ Export CSV
+            <a href={`/api/export/calls?range=${range}`} className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-zinc-400">
+              <Download aria-hidden className="size-3.5" /> Export CSV
             </a>
           )}
           <LogCall />
@@ -53,7 +54,7 @@ export default async function CallsPage({ searchParams }: PageProps<"/dashboard/
           <Link
             key={o}
             href={href({ outcome: outcome === o ? "all" : o })}
-            className={`rounded-lg border bg-white p-3 hover:border-zinc-300 ${outcome === o ? "border-[#B08D57] ring-1 ring-[#B08D57]" : "border-zinc-200"}`}
+            className={`rounded-lg border bg-white p-3 hover:border-zinc-300 ${outcome === o ? "border-gold ring-1 ring-gold" : "border-zinc-200"}`}
           >
             <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${CALL_OUTCOMES[o].tag}`}>{CALL_OUTCOMES[o].label}</span>
             <p className="mt-1 text-2xl font-semibold tabular-nums text-zinc-900">{counts[o]}</p>
@@ -63,13 +64,13 @@ export default async function CallsPage({ searchParams }: PageProps<"/dashboard/
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
         {(Object.keys(RANGES) as Range[]).map((r) => (
-          <Link key={r} href={href({ range: r })} className={`rounded-full px-3 py-1 ${range === r ? "bg-[#1C2B47] text-white" : "border border-zinc-300 bg-white text-zinc-600"}`}>
+          <Link key={r} href={href({ range: r })} className={`rounded-full px-3 py-1 ${range === r ? "bg-navy text-white" : "border border-zinc-300 bg-white text-zinc-600"}`}>
             {RANGES[r]}
           </Link>
         ))}
         <span className="mx-1 h-4 w-px bg-zinc-300" aria-hidden />
         {(["all", "inbound", "outbound"] as const).map((d) => (
-          <Link key={d} href={href({ dir: d })} className={`rounded-full px-3 py-1 ${dir === d ? "bg-[#1C2B47] text-white" : "border border-zinc-300 bg-white text-zinc-600"}`}>
+          <Link key={d} href={href({ dir: d })} className={`rounded-full px-3 py-1 ${dir === d ? "bg-navy text-white" : "border border-zinc-300 bg-white text-zinc-600"}`}>
             {d === "all" ? "All directions" : d === "inbound" ? "↙ Incoming" : "↗ Outgoing"}
           </Link>
         ))}
@@ -87,7 +88,7 @@ export default async function CallsPage({ searchParams }: PageProps<"/dashboard/
                   <span aria-label={c.direction === "inbound" ? "Incoming" : "Outgoing"} className="text-zinc-500">
                     {c.direction === "inbound" ? "↙" : "↗"}
                   </span>
-                  <Link href={conversationHref(c.clientId)} className="font-semibold text-zinc-900 hover:text-[#8A6A3A] hover:underline">
+                  <Link href={conversationHref(c.clientId)} className="font-semibold text-zinc-900 hover:text-gold-ink hover:underline">
                     {c.clientName}
                   </Link>
                   <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${CALL_OUTCOMES[c.outcome].tag}`}>{CALL_OUTCOMES[c.outcome].label}</span>
@@ -105,8 +106,8 @@ export default async function CallsPage({ searchParams }: PageProps<"/dashboard/
                   <RecordingPlayer messageId={c.id} label={c.outcome === "voicemail" ? "Play" : "Recording"} />
                 )}
                 {c.phone && (
-                  <a href={`tel:${c.phone}`} className="rounded-md border border-zinc-300 px-2 py-0.5 text-xs text-zinc-700 hover:border-zinc-400">
-                    📞 Call back
+                  <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1 rounded-md border border-zinc-300 px-2 py-0.5 text-xs text-zinc-700 hover:border-zinc-400">
+                    <Phone aria-hidden className="size-3.5" /> Call back
                   </a>
                 )}
               </div>

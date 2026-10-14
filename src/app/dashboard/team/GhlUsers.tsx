@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { DEPARTMENTS } from "@/lib/stages";
 import { addFromGhl, linkGhlUser, syncLinkedFromGhl } from "./actions";
+import { useConfirm } from "@/components/ui/confirm";
 
 interface GhlUser {
   id: string;
@@ -20,6 +21,7 @@ interface Member {
 /** GoHighLevel users and whether each is in the portal: add, link or unlink, and copy details across. */
 export function GhlUsers({ users, members, refreshedAt, error }: { users: GhlUser[]; members: Member[]; refreshedAt: string; error: string }) {
   const [pending, startTransition] = useTransition();
+  const confirm = useConfirm();
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [choice, setChoice] = useState<Record<string, { role: string; department: string }>>({});
 
@@ -55,7 +57,7 @@ export function GhlUsers({ users, members, refreshedAt, error }: { users: GhlUse
       </div>
 
       {message && (
-        <p role={message.ok ? "status" : "alert"} className={`text-xs ${message.ok ? "text-[#3F7A5C]" : "text-red-600"}`}>
+        <p role={message.ok ? "status" : "alert"} className={`text-xs ${message.ok ? "text-success" : "text-red-600"}`}>
           {message.text}
         </p>
       )}
@@ -123,12 +125,15 @@ export function GhlUsers({ users, members, refreshedAt, error }: { users: GhlUse
                           type="button"
                           disabled={pending || !u.email}
                           title={u.email ? undefined : "No email in GHL"}
-                          onClick={() => {
-                            if (window.confirm(`Add ${u.name} (${u.email}) to the portal as ${ROLE_LABELS[c.role as keyof typeof ROLE_LABELS]}? They'll be able to sign in and see all client conversations.`)) {
-                              run(() => addFromGhl({ ghlUserId: u.id, role: c.role, department: c.department }), `Added ${u.name}`);
-                            }
+                          onClick={async () => {
+                            const ok = await confirm({
+                              title: `Add ${u.name} to the portal?`,
+                              body: `${u.email} will be able to sign in as ${ROLE_LABELS[c.role as keyof typeof ROLE_LABELS]} and see all client conversations.`,
+                              confirmLabel: "Add",
+                            });
+                            if (ok) run(() => addFromGhl({ ghlUserId: u.id, role: c.role, department: c.department }), `Added ${u.name}`);
                           }}
-                          className="rounded-md bg-[#1C2B47] px-2 py-0.5 text-xs font-semibold text-white disabled:opacity-40"
+                          className="rounded-md bg-navy px-2 py-0.5 text-xs font-semibold text-white disabled:opacity-40"
                         >
                           Add
                         </button>

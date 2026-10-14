@@ -77,7 +77,7 @@ function BusinessRow({ business, ghl }: { business: Business; ghl?: GhlConnectio
             onSave={(value) => updateBusinessField({ id: business.id, field: "ghl_location_id", value })}
           />
         </div>
-        {ghl && <span className={`text-xs ${ghl.ok ? "text-[#3F7A5C]" : "text-amber-700"}`}>{ghl.status}</span>}
+        {ghl && <span className={`text-xs ${ghl.ok ? "text-success" : "text-amber-700"}`}>{ghl.status}</span>}
       </div>
       {error && <p className="w-full text-xs text-red-600">{error}</p>}
     </li>

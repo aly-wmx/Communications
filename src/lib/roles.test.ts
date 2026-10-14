@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ACTIONS, canExport, canOpen, canSendMessages, PAGES, ROLES } from "./roles";
+import { ACTIONS, canAssignTickets, canExport, canOpen, canSendMessages, PAGES, ROLES } from "./roles";
 
 describe("canSendMessages", () => {
   it("lets every role message clients", () => {
@@ -28,6 +28,12 @@ describe("access list", () => {
     const sendRow = ACTIONS.find((a) => a.label.startsWith("Reply"))!;
     expect(ROLES.every((r) => sendRow.roles.includes(r) === canSendMessages(r))).toBe(true);
     expect(sendRow.needs).toBe("can_send");
+  });
+
+  it("only lets managers and admins assign tickets to others", () => {
+    const assignRow = ACTIONS.find((a) => a.label.startsWith("Assign tickets"))!;
+    expect(ROLES.every((r) => assignRow.roles.includes(r) === canAssignTickets(r))).toBe(true);
+    expect(canAssignTickets("coordinator")).toBe(false);
   });
 
   it("lists every page once", () => {

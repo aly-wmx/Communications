@@ -24,6 +24,10 @@ const NOTIFICATION_LABEL: Record<string, string> = {
   reminder: "Reminder",
   picked_up: "Picked up",
   mention: "Mentioned you",
+  assigned: "Assigned to you",
+  due_soon: "Due soon",
+  overdue: "Overdue",
+  ticket_done: "Ticket done",
 };
 
 const SOUND_KEY = "wmx-comms:sound";
@@ -199,6 +203,11 @@ export function LiveUpdates({
         .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, () => refreshSoon(2500))
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, refreshForMessages)
         .on("postgres_changes", { event: "*", schema: "public", table: "team_notes" }, refreshForMessages)
+        // Tickets move the Board and the sidebar badge; comments show in an open ticket.
+        .on("postgres_changes", { event: "*", schema: "public", table: "tickets" }, () => refreshSoon(2500))
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "ticket_events" }, () => {
+          if (window.location.search.includes("t=")) refreshSoon(1500);
+        })
         .subscribe((status) => {
           setConnected(status === "SUBSCRIBED");
           // Catch up on anything missed while disconnected.
@@ -275,7 +284,7 @@ export function LiveUpdates({
         <p className="flex items-center gap-1.5 text-zinc-500">
           <span
             aria-hidden
-            className={`size-1.5 rounded-full ${connected ? "bg-[#3F7A5C]" : "bg-zinc-300"}`}
+            className={`size-1.5 rounded-full ${connected ? "bg-success" : "bg-zinc-300"}`}
           />
           {connected ? "Live — new messages appear instantly" : "Connecting…"}
         </p>
@@ -287,7 +296,7 @@ export function LiveUpdates({
             <button
               type="button"
               onClick={enableDesktop}
-              className="font-semibold text-[#8A6A3A] underline-offset-2 hover:underline"
+              className="font-semibold text-gold-ink underline-offset-2 hover:underline"
             >
               Turn on desktop alerts
             </button>
@@ -322,7 +331,7 @@ export function ToastCard({ toast: t, onPin, onDismiss }: { toast: Toast; onPin:
       onMouseEnter={onPin}
       onFocus={onPin}
       className={`pointer-events-auto rounded-lg border border-l-4 bg-white p-3 shadow-lg ${
-        t.urgent ? "border-red-300 border-l-red-600" : "border-zinc-200 border-l-[#B08D57]"
+        t.urgent ? "border-red-300 border-l-red-600" : "border-zinc-200 border-l-gold"
       }`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -352,7 +361,7 @@ export function ToastCard({ toast: t, onPin, onDismiss }: { toast: Toast; onPin:
         </p>
       )}
       <div className="mt-2 flex items-center justify-between gap-3">
-        <Link href={t.link || "/dashboard/inbox?view=waiting"} onClick={onDismiss} className="text-xs font-semibold text-[#8A6A3A] hover:underline">
+        <Link href={t.link || "/dashboard/inbox?view=waiting"} onClick={onDismiss} className="text-xs font-semibold text-gold-ink hover:underline">
           {t.link ? "Open →" : "Open inbox →"}
         </Link>
         {long && (

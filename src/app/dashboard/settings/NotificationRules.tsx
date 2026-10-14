@@ -6,7 +6,11 @@ import { saveNotificationRules } from "./actions";
 const KINDS = [
   ["escalation", "Escalations", "A client waited past the target, or someone pressed Escalate. Goes to the people chosen."],
   ["picked_up", "Picked up", "Someone said “I’ve got it” — tells the others they can stand down."],
-  ["mention", "Mentions & reply flags", "Someone @mentioned a teammate or flagged a client for them to reply to."],
+  ["assigned", "Assigned to you", "Someone gave you a ticket or a client conversation item."],
+  ["mention", "Mentions & reply flags", "Someone @mentioned a teammate (in a note or ticket comment) or flagged a client for them to reply to."],
+  ["due_soon", "Ticket due soon", "A ticket you have is due within a day."],
+  ["overdue", "Ticket overdue", "A ticket you have is past its due date."],
+  ["ticket_done", "Ticket done", "A ticket you created was finished."],
   ["reminder", "Reminders", "A client assigned to someone is close to the escalation time."],
   ["new_message", "New client messages", "Every new text, email or call, to whoever it’s assigned to."],
 ] as const;
@@ -46,7 +50,7 @@ export function NotificationRules({ initial, slackConnected }: { initial: Rules;
       <div>
         <h2 className="text-sm font-semibold text-zinc-900">Notifications</h2>
         <p className="mt-1 text-sm text-zinc-600">
-          Choose what goes out by email and Slack. Everything always shows in the portal&apos;s 🔔 bell and pop-ups. Each person can
+          Choose what goes out by email and Slack. Everything always shows in the portal&apos;s bell and pop-ups. Each person can
           still turn email or Slack off for themselves on their Notifications page.
         </p>
         {!slackConnected && (
@@ -81,7 +85,7 @@ export function NotificationRules({ initial, slackConnected }: { initial: Rules;
                       onChange={() => toggle(c.key, kind)}
                       disabled={pending}
                       aria-label={`${label} by ${c.label}`}
-                      className="size-4 accent-[#B08D57]"
+                      className="size-4 accent-gold"
                     />
                   </td>
                 ))}
@@ -99,7 +103,7 @@ export function NotificationRules({ initial, slackConnected }: { initial: Rules;
       </ul>
 
       {message && (
-        <p role={message.ok ? "status" : "alert"} className={`text-sm ${message.ok ? "text-[#3F7A5C]" : "text-red-600"}`}>
+        <p role={message.ok ? "status" : "alert"} className={`text-sm ${message.ok ? "text-success" : "text-red-600"}`}>
           {message.text}
         </p>
       )}
@@ -108,7 +112,7 @@ export function NotificationRules({ initial, slackConnected }: { initial: Rules;
           type="button"
           onClick={save}
           disabled={!dirty || pending}
-          className="rounded-md bg-[#1C2B47] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
+          className="rounded-md bg-navy px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
         >
           {pending ? "Saving…" : "Save"}
         </button>

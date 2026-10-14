@@ -20,7 +20,7 @@ export function BusinessSwitcher({ businesses, currentId }: { businesses: Busine
           value={currentId}
           disabled={pending || businesses.length < 2}
           onChange={(e) => startTransition(() => selectBusiness(e.target.value))}
-          className="w-full truncate rounded-md border border-transparent bg-transparent py-1 text-sm font-semibold text-[#1C2B47] hover:border-zinc-200 focus:border-zinc-400 focus:outline-none disabled:cursor-default disabled:hover:border-transparent"
+          className="w-full truncate rounded-md border border-transparent bg-transparent py-1 text-sm font-semibold text-navy hover:border-zinc-200 focus:border-zinc-400 focus:outline-none disabled:cursor-default disabled:hover:border-transparent"
         >
           {businesses.map((b) => (
             <option key={b.id} value={b.id}>

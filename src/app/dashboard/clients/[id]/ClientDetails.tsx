@@ -3,6 +3,8 @@
 import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { deleteClient, updateClient } from "../actions";
+import { useConfirm } from "@/components/ui/confirm";
+import { Pencil } from "lucide-react";
 
 export interface ClientInfo {
   id: string;
@@ -29,6 +31,7 @@ export function ClientDetails({
   const [form, setForm] = useState(client);
   const [message, setMessage] = useState<{ text: string; tone: "error" | "warn" | "ok" } | null>(null);
   const [pending, startTransition] = useTransition();
+  const confirm = useConfirm();
   const set = (k: keyof ClientInfo, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const ownerName = team.find((t) => t.id === client.ownerId)?.name;
 
@@ -49,10 +52,13 @@ export function ClientDetails({
     });
   }
 
-  function remove() {
-    const ok = window.confirm(
-      `Delete ${client.name} from the portal?\n\nThis removes their conversation history and queue items here. Nothing is deleted in GoHighLevel, and they'll reappear if they message again.`,
-    );
+  async function remove() {
+    const ok = await confirm({
+      title: `Delete ${client.name} from the portal?`,
+      body: "This removes their conversation history and open items here. Nothing is deleted in GoHighLevel, and they'll reappear if they message again.",
+      confirmLabel: "Delete client",
+      tone: "danger",
+    });
     if (!ok) return;
     startTransition(async () => {
       const result = await deleteClient(client.id);
@@ -68,8 +74,8 @@ export function ClientDetails({
       <div className="flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Client</h2>
         {!editing && (
-          <button type="button" onClick={start} className="text-xs font-semibold text-[#8A6A3A] hover:underline">
-            ✎ Edit
+          <button type="button" onClick={start} className="inline-flex items-center gap-1 text-xs font-semibold text-gold-ink hover:underline">
+            <Pencil aria-hidden className="size-3.5" /> Edit
           </button>
         )}
       </div>
@@ -127,7 +133,7 @@ export function ClientDetails({
             <button
               type="submit"
               disabled={pending}
-              className="rounded-md bg-[#1C2B47] px-3 py-1 text-xs font-semibold text-white hover:brightness-125 disabled:opacity-50"
+              className="rounded-md bg-navy px-3 py-1 text-xs font-semibold text-white hover:brightness-125 disabled:opacity-50"
             >
               {pending ? "Saving…" : "Save"}
             </button>
@@ -152,7 +158,7 @@ export function ClientDetails({
           {message && (
             <p
               role="status"
-              className={`mt-2 text-xs ${message.tone === "warn" ? "text-amber-700" : message.tone === "ok" ? "text-[#3F7A5C]" : "text-red-600"}`}
+              className={`mt-2 text-xs ${message.tone === "warn" ? "text-amber-700" : message.tone === "ok" ? "text-success" : "text-red-600"}`}
             >
               {message.text}
             </p>

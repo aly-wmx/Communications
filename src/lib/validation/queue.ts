@@ -7,6 +7,8 @@ export const queueActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("responded"), contactId: id }),
   z.object({ action: z.literal("resolve"), contactId: id, reason: z.string().trim().max(120).optional() }),
   z.object({ action: z.literal("reopen"), contactId: id }),
+  // Board: "Waiting" column (waiting on the client).
+  z.object({ action: z.literal("wait"), contactId: id }),
 ]);
 
 export type QueueAction = z.infer<typeof queueActionSchema>;

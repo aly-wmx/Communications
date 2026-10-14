@@ -5,6 +5,8 @@ import { RecordingPlayer } from "./RecordingPlayer";
 import { channelStyle, type Attachment } from "@/lib/comms/channels";
 import type { EmailMeta } from "@/lib/comms/email-meta";
 import { dayLabel as dayLabelIn, formatStamp } from "@/lib/format-time";
+import { ChannelIcon } from "@/components/ChannelIcon";
+import { Flag, Lock, Paperclip } from "lucide-react";
 
 export interface ChatMessage {
   id: string;
@@ -68,7 +70,7 @@ function AttachmentItem({ src, a, light }: { src: string; a: Attachment; light: 
         light ? "bg-white/15 text-white" : "bg-zinc-100 text-zinc-700"
       }`}
     >
-      📎 {a.kind === "unknown" ? "Open attachment" : a.name}
+      <Paperclip aria-hidden className="size-3.5" /> {a.kind === "unknown" ? "Open attachment" : a.name}
     </a>
   );
   if (failed || a.kind === "file") return chip;
@@ -156,13 +158,13 @@ export function ChatThread({
       <div
         ref={scroller}
         onScroll={onScroll}
-        className="h-full overflow-y-auto bg-[#F7F6F2] px-3 py-4 sm:px-6"
+        className="h-full overflow-y-auto bg-well px-3 py-4 sm:px-6"
         role="log"
         aria-label={`Conversation with ${clientName}`}
       >
         {olderHref && (
           <p className="mb-4 text-center">
-            <a href={olderHref} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#8A6A3A] shadow-sm hover:underline">
+            <a href={olderHref} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gold-ink shadow-sm hover:underline">
               ↑ Load older messages
             </a>
           </p>
@@ -205,11 +207,11 @@ export function ChatThread({
                     <div className="flex justify-center py-1.5">
                       <div className="w-full max-w-[85%] rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-[14px] shadow-sm">
                         <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800" title={fullDate(m.occurredAt)}>
-                          🔒 Team note · {m.noteAuthor} · {time(m.occurredAt)}
+                          <Lock aria-hidden className="inline size-3 align-[-1px]" /> Team note · {m.noteAuthor} · {time(m.occurredAt)}
                         </p>
                         {m.flaggedFor && (
                           <p className="mb-1 inline-block rounded bg-red-100 px-1.5 py-0.5 text-[11px] font-semibold text-red-800">
-                            🚩 Flagged for {m.flaggedFor} to reply
+                            <Flag aria-hidden className="inline size-3 align-[-1px]" /> Flagged for {m.flaggedFor} to reply
                           </p>
                         )}
                         <p className="whitespace-pre-wrap break-words text-zinc-900">
@@ -237,7 +239,7 @@ export function ChatThread({
                         }`}
                       >
                         <span>
-                          {m.channel === "Voicemail" ? "📼" : out ? "↗" : "📞"} {m.body} · {time(m.occurredAt)}
+                          <ChannelIcon channel={m.channel} className="inline size-3.5 align-[-2px]" /> {out ? "↗ " : ""}{m.body} · {time(m.occurredAt)}
                         </span>
                         {m.channel === "Voicemail" && <RecordingPlayer messageId={m.id} label="Play voicemail" />}
                         {m.channel === "Call" && /completed|answered/i.test(m.body) && (
@@ -250,7 +252,7 @@ export function ChatThread({
                       {!out && (
                         <span
                           aria-hidden
-                          className={`grid size-7 shrink-0 place-items-center rounded-full bg-[#1C2B47]/10 text-[11px] font-bold text-[#1C2B47] ${
+                          className={`grid size-7 shrink-0 place-items-center rounded-full bg-navy/10 text-[11px] font-bold text-navy ${
                             last ? "" : "invisible"
                           }`}
                         >
@@ -262,8 +264,8 @@ export function ChatThread({
                           className={`px-3.5 py-2 text-[14px] leading-snug shadow-sm ${
                             out
                               ? automated
-                                ? "border border-[#1C2B47]/15 bg-white text-zinc-700"
-                                : "bg-[#1C2B47] text-white"
+                                ? "border border-navy/15 bg-white text-zinc-700"
+                                : "bg-navy text-white"
                               : `border-l-4 bg-white text-zinc-900 ${channelStyle(m.channel).border}`
                           } rounded-2xl ${
                             // Grouped bubbles: tighter corners where they meet, a small "tail" on the last one.
@@ -279,7 +281,7 @@ export function ChatThread({
                                 out && !automated ? "bg-white/15 text-white" : channelStyle(m.channel).tag
                               }`}
                             >
-                              <span aria-hidden>{channelStyle(m.channel).icon}</span>
+                              <ChannelIcon channel={m.channel} className="size-3" />
                               {m.channel === "Text" ? "Text message" : channelStyle(m.channel).label}
                             </span>
                           </p>
@@ -300,7 +302,7 @@ export function ChatThread({
                         {last && (
                           <p className="mt-1 px-1 text-[11px] text-zinc-500" title={fullDate(m.occurredAt)}>
                             {m.sender && (
-                              <span className={`font-semibold ${out && !automated ? "text-[#1C2B47]" : "text-zinc-500"}`}>{m.sender} · </span>
+                              <span className={`font-semibold ${out && !automated ? "text-navy" : "text-zinc-500"}`}>{m.sender} · </span>
                             )}
                             {!m.sender && automated && <span className="font-semibold text-zinc-500">Automated · </span>}
                             {time(m.occurredAt)}
@@ -317,7 +319,7 @@ export function ChatThread({
 
         {newerHref && (
           <p className="mt-4 text-center">
-            <a href={newerHref} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#8A6A3A] shadow-sm hover:underline">
+            <a href={newerHref} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gold-ink shadow-sm hover:underline">
               Jump to latest ↓
             </a>
           </p>
@@ -331,7 +333,7 @@ export function ChatThread({
             scrollToBottom(true);
             setUnseen(false);
           }}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-[#8A6A3A] px-4 py-1.5 text-xs font-semibold text-white shadow-lg"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-gold-ink px-4 py-1.5 text-xs font-semibold text-white shadow-lg"
         >
           New messages ↓
         </button>

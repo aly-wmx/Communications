@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 import { BarList, ColumnChart } from "./reports/Charts";
 import { NoBusiness } from "@/components/NoBusiness";
 import { conversationHref } from "@/lib/links";
+import { TriangleAlert } from "lucide-react";
 
 const mins = (m: number | null) => (m == null ? "—" : formatMinutes(m));
 
@@ -21,11 +22,11 @@ function greeting(hour: number) {
 function StatCard({ href, label, value, hint, tone = "neutral" }: { href: string; label: string; value: number | string; hint?: string; tone?: "neutral" | "alert" | "good" }) {
   const ring = tone === "alert" ? "border-red-200 bg-red-50/60" : tone === "good" ? "border-emerald-200 bg-emerald-50/50" : "border-zinc-200 bg-white";
   return (
-    <Link href={href} className={`group rounded-lg border p-4 transition-colors hover:border-[#B08D57] ${ring}`}>
+    <Link href={href} className={`group rounded-lg border p-4 transition-colors hover:border-gold ${ring}`}>
       <p className="text-xs font-medium text-zinc-500">{label}</p>
       <p className={`mt-1 text-3xl font-semibold tabular-nums ${tone === "alert" ? "text-red-700" : "text-zinc-900"}`}>{value}</p>
       {hint && <p className="mt-0.5 text-xs text-zinc-500">{hint}</p>}
-      <p className="mt-2 text-[11px] font-semibold text-[#8A6A3A] opacity-0 transition-opacity group-hover:opacity-100">View →</p>
+      <p className="mt-2 text-[11px] font-semibold text-gold-ink opacity-0 transition-opacity group-hover:opacity-100">View →</p>
     </Link>
   );
 }
@@ -95,7 +96,7 @@ export default async function OverviewPage() {
             {greeting(hour)}, {me.name.split(" ")[0]}
           </h1>
         </div>
-        <Link href="/dashboard/inbox" className="rounded-md bg-[#1C2B47] px-4 py-2 text-sm font-semibold text-white hover:brightness-125">
+        <Link href="/dashboard/inbox" className="rounded-md bg-navy px-4 py-2 text-sm font-semibold text-white hover:brightness-125">
           Open Inbox →
         </Link>
       </header>
@@ -140,9 +141,9 @@ export default async function OverviewPage() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         {/* 3. Needs attention now */}
-        <Section title="Needs attention now" action={<Link href="/dashboard/inbox?view=waiting&dept=all&sort=waiting" className="text-xs font-semibold text-[#8A6A3A] hover:underline">See all →</Link>}>
+        <Section title="Needs attention now" action={<Link href="/dashboard/inbox?view=waiting&dept=all&sort=waiting" className="text-xs font-semibold text-gold-ink hover:underline">See all →</Link>}>
           {o.attention.length === 0 ? (
-            <p className="rounded-lg border border-zinc-200 bg-white p-6 text-center text-sm text-zinc-500">Nobody is waiting on a reply. 🎉</p>
+            <p className="rounded-lg border border-zinc-200 bg-white p-6 text-center text-sm text-zinc-500">Nobody is waiting on a reply.</p>
           ) : (
             <ul className="divide-y divide-zinc-100 overflow-hidden rounded-lg border border-zinc-200 bg-white">
               {o.attention.map((a) => (
@@ -174,7 +175,7 @@ export default async function OverviewPage() {
         </Section>
 
         {/* 4. This week vs last week */}
-        <Section title="This week vs last week" action={<Link href="/dashboard/reports?range=7d" className="text-xs font-semibold text-[#8A6A3A] hover:underline">Reports →</Link>}>
+        <Section title="This week vs last week" action={<Link href="/dashboard/reports?range=7d" className="text-xs font-semibold text-gold-ink hover:underline">Reports →</Link>}>
           <div className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 bg-white">
             {[
               { label: "Median first response", value: mins(o.week.medianFirstResponse.current), change: frt },
@@ -286,8 +287,8 @@ async function AdminHealth({
           {issues.map((i) => (
             <li key={i.text}>
               <Link href={i.href} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-amber-900 hover:bg-amber-50">
-                <span>⚠ {i.text}</span>
-                <span className="shrink-0 text-xs font-semibold text-[#8A6A3A]">Fix →</span>
+                <span className="flex items-center gap-2"><TriangleAlert aria-hidden className="size-4 shrink-0" /> {i.text}</span>
+                <span className="shrink-0 text-xs font-semibold text-gold-ink">Fix →</span>
               </Link>
             </li>
           ))}

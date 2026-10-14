@@ -17,7 +17,7 @@ export type View = "table" | "kanban" | "auto";
 const STAGES: { key: Stage; title: string; hint: string; tone: string }[] = [
   { key: "needs", title: "Past target", hint: "Over the escalation time, not escalated yet.", tone: "bg-amber-500" },
   { key: "awaiting", title: "Awaiting pickup", hint: "Escalated; nobody has said “I’ve got it”.", tone: "bg-red-600" },
-  { key: "picked", title: "Picked up", hint: "Someone has it; resolve once the client is sorted.", tone: "bg-[#3F7A5C]" },
+  { key: "picked", title: "Picked up", hint: "Someone has it; resolve once the client is sorted.", tone: "bg-success" },
   { key: "resolved", title: "Resolved", hint: "Escalations closed in the last 7 days.", tone: "bg-zinc-400" },
 ];
 const stageInfo = (s: Stage) => STAGES.find((x) => x.key === s)!;
@@ -156,7 +156,7 @@ export function EscalationsView({
         Escalated {ago(last.at, now)} by {name(last.byId)}
         {last.notifiedIds.length > 0 && ` to ${last.notifiedIds.map((id) => name(id)).join(", ")}`}
         {last.acknowledgedAt && (
-          <span className="font-semibold text-[#3F7A5C]">
+          <span className="font-semibold text-success">
             {" · "}picked up by {name(last.acknowledgedById)} {ago(last.acknowledgedAt, now)}
           </span>
         )}
@@ -222,7 +222,7 @@ export function EscalationsView({
             return (
               <tr key={c.id} className={`align-top ${busy === c.id ? "opacity-60" : ""}`}>
                 <td className="max-w-[260px] px-3 py-2.5">
-                  <Link href={conversationHref(c.clientId)} className="font-semibold text-zinc-900 hover:text-[#8A6A3A] hover:underline">
+                  <Link href={conversationHref(c.clientId)} className="font-semibold text-zinc-900 hover:text-gold-ink hover:underline">
                     {clientName(c)}
                   </Link>
                   {c.priority === "Urgent" && <span className="ml-2 rounded bg-red-100 px-1.5 text-[11px] text-red-700">Urgent</span>}
@@ -253,7 +253,7 @@ export function EscalationsView({
                         type="button"
                         disabled={busy === c.id}
                         onClick={() => move(c, stage, "picked")}
-                        className="rounded-md bg-[#3F7A5C] px-2.5 py-1 text-xs font-semibold text-white hover:brightness-110"
+                        className="rounded-md bg-success px-2.5 py-1 text-xs font-semibold text-white hover:brightness-110"
                       >
                         I&apos;ve got it
                       </button>
@@ -292,9 +292,9 @@ export function EscalationsView({
             onDrop={(e) => onDrop(e, s.key)}
             className={`flex min-h-[220px] flex-col rounded-lg border p-2 transition-colors ${
               over === s.key
-                ? "border-[#B08D57] bg-[#B08D57]/10"
+                ? "border-gold bg-gold/10"
                 : canDrop
-                  ? "border-dashed border-[#B08D57]/60 bg-zinc-50"
+                  ? "border-dashed border-gold/60 bg-zinc-50"
                   : dragging && dragging.from !== s.key
                     ? "border-zinc-200 bg-zinc-50 opacity-60"
                     : "border-zinc-200 bg-zinc-50"
@@ -331,7 +331,7 @@ export function EscalationsView({
                     <Link
                       href={conversationHref(c.clientId)}
                       draggable={false}
-                      className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900 hover:text-[#8A6A3A] hover:underline"
+                      className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900 hover:text-gold-ink hover:underline"
                     >
                       {clientName(c)}
                     </Link>
@@ -351,7 +351,7 @@ export function EscalationsView({
                     <Link
                       href={conversationHref(c.clientId)}
                       draggable={false}
-                      className="text-xs font-semibold text-[#8A6A3A] hover:underline"
+                      className="text-xs font-semibold text-gold-ink hover:underline"
                     >
                       Open →
                     </Link>

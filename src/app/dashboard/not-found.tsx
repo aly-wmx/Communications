@@ -8,7 +8,7 @@ export default function DashboardNotFound() {
       <p className="mt-2 text-sm text-zinc-600">It may have been deleted, or the link is out of date.</p>
       <Link
         href="/dashboard/inbox"
-        className="mt-5 inline-block rounded-md bg-[#1C2B47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#15213a]"
+        className="mt-5 inline-block rounded-md bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-navy-hover"
       >
         Back to Inbox
       </Link>

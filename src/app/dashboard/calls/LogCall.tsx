@@ -70,7 +70,7 @@ export function LogCall() {
           setWarning(null);
           dialog.current?.showModal();
         }}
-        className="rounded-md bg-[#1C2B47] px-3 py-1.5 text-sm font-semibold text-white hover:brightness-125"
+        className="rounded-md bg-navy px-3 py-1.5 text-sm font-semibold text-white hover:brightness-125"
       >
         + Log a call
       </button>
@@ -88,7 +88,7 @@ export function LogCall() {
                 <span className="font-semibold">{picked.name}</span>
                 <span className="block text-xs text-zinc-500">{picked.detail}</span>
               </span>
-              <button type="button" onClick={() => setPicked(null)} className="text-xs font-semibold text-[#8A6A3A] hover:underline">
+              <button type="button" onClick={() => setPicked(null)} className="text-xs font-semibold text-gold-ink hover:underline">
                 Change
               </button>
             </div>
@@ -160,7 +160,7 @@ export function LogCall() {
             <button type="button" onClick={() => dialog.current?.close()} className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700">
               Cancel
             </button>
-            <button type="submit" disabled={pending} className="rounded-md bg-[#8A6A3A] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50">
+            <button type="submit" disabled={pending} className="rounded-md bg-gold-ink px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50">
               {pending ? "Saving…" : "Log call"}
             </button>
           </div>

@@ -12,7 +12,7 @@ export function legalContact(): string | null {
 export function ContactLine() {
   const email = legalContact();
   return email ? (
-    <a href={`mailto:${email}`} className="font-medium text-[#1C2B47] underline underline-offset-2">
+    <a href={`mailto:${email}`} className="font-medium text-navy underline underline-offset-2">
       {email}
     </a>
   ) : (
@@ -23,11 +23,11 @@ export function ContactLine() {
 /** Public page shell for the Privacy Policy and Terms of Service (no sign-in needed). */
 export function LegalPage({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#F5F3EE]">
+    <div className="min-h-screen bg-page">
       <header className="border-b border-zinc-200 bg-white">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-4">
           <WmxWordmark />
-          <Link href="/login" className="text-sm font-medium text-[#8A6A3A] hover:underline">
+          <Link href="/login" className="text-sm font-medium text-gold-ink hover:underline">
             Sign in
           </Link>
         </div>

@@ -7,6 +7,7 @@ import { ROLES, ROLE_LABELS } from "@/lib/roles";
 import { DEPARTMENTS } from "@/lib/stages";
 import type { Database } from "@/lib/supabase/database.types";
 import { deleteMember, inviteMember, updateMemberField } from "./actions";
+import { useConfirm } from "@/components/ui/confirm";
 
 type Member = Database["public"]["Tables"]["team_members"]["Row"];
 
@@ -23,6 +24,7 @@ export function MemberRow({
   onMessage: (message: string, tone: "error" | "info") => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const confirm = useConfirm();
   const [escalation, setEscalation] = useState(member.escalation);
   const [canSend, setCanSend] = useState(member.can_send);
 
@@ -38,8 +40,14 @@ export function MemberRow({
     });
   }
 
-  function handleDelete() {
-    if (!window.confirm(`Remove ${member.name}? They lose access, and their open contacts become unassigned.`)) return;
+  async function handleDelete() {
+    const ok = await confirm({
+      title: `Remove ${member.name}?`,
+      body: "They lose access straight away, and their open items become unassigned.",
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
+    if (!ok) return;
     startTransition(async () => {
       const result = await deleteMember({ id: member.id });
       if (!result.ok) onMessage(result.error, "error");
@@ -106,7 +114,7 @@ export function MemberRow({
           disabled={pending}
           onChange={(e) => handleToggle("escalation", e.target.checked)}
           aria-label={`${member.name} receives escalations`}
-          className="size-4 accent-[#B08D57]"
+          className="size-4 accent-gold"
         />
       </td>
       <td className="px-3 py-2 text-center">
@@ -116,12 +124,12 @@ export function MemberRow({
           disabled={pending}
           onChange={(e) => handleToggle("can_send", e.target.checked)}
           aria-label={`${member.name} can send texts and emails to clients`}
-          className="size-4 accent-[#B08D57]"
+          className="size-4 accent-gold"
         />
         {!canSend && <p className="mt-0.5 text-[11px] font-medium text-amber-700">Waiting for approval</p>}
       </td>
       <td className="whitespace-nowrap px-2 py-2 text-right">
-        <Link href={`/dashboard/access?member=${member.id}`} className="mr-3 text-xs font-semibold text-[#8A6A3A] hover:underline">
+        <Link href={`/dashboard/access?member=${member.id}`} className="mr-3 text-xs font-semibold text-gold-ink hover:underline">
           View access
         </Link>
         {member.email && !isMe && (
@@ -129,7 +137,7 @@ export function MemberRow({
             type="button"
             disabled={pending}
             onClick={handleInvite}
-            className="mr-3 text-xs font-semibold text-[#8A6A3A] hover:underline disabled:opacity-50"
+            className="mr-3 text-xs font-semibold text-gold-ink hover:underline disabled:opacity-50"
           >
             Send invite
           </button>

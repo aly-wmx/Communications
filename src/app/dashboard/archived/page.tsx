@@ -8,11 +8,12 @@ import { NoBusiness } from "@/components/NoBusiness";
 import { conversationHref } from "@/lib/links";
 import { formatStamp } from "@/lib/format-time";
 import { businessTimeZone } from "@/lib/time-zone";
+import { Archive, Ban } from "lucide-react";
 
 const TABS = [
   ["all", "All"],
-  ["spam", "🚫 Spam"],
-  ["archived", "🗄 Archived"],
+  ["spam", "Spam"],
+  ["archived", "Archived"],
 ] as const;
 
 export default async function ArchivedPage({ searchParams }: PageProps<"/dashboard/archived">) {
@@ -40,6 +41,9 @@ export default async function ArchivedPage({ searchParams }: PageProps<"/dashboa
 
   return (
     <div className="space-y-6">
+      <Link href="/dashboard/inbox" className="text-xs font-semibold text-gold-ink hover:underline">
+        ← Inbox
+      </Link>
       <PageHeader
         title="Archived"
         description="Spam and archived clients. They're hidden from the Inbox; new messages from them are kept but don't alert anyone. Restore to bring one back."
@@ -50,7 +54,7 @@ export default async function ArchivedPage({ searchParams }: PageProps<"/dashboa
             key={key}
             href={key === "all" ? "/dashboard/archived" : `/dashboard/archived?show=${key}`}
             aria-current={tab === key ? "page" : undefined}
-            className={`rounded-md px-3 py-1 ${tab === key ? "bg-[#B08D5712] font-semibold text-[#1C2B47]" : "text-zinc-500 hover:text-zinc-900"}`}
+            className={`rounded-md px-3 py-1 ${tab === key ? "bg-gold/7 font-semibold text-navy" : "text-zinc-500 hover:text-zinc-900"}`}
           >
             {label} <span className="text-xs text-zinc-500">{counts[key]}</span>
           </Link>
@@ -64,10 +68,10 @@ export default async function ArchivedPage({ searchParams }: PageProps<"/dashboa
           {rows.map((c) => (
             <li key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
               <span aria-hidden className="text-lg">
-                {c.archive_reason === "spam" ? "🚫" : "🗄"}
+                {c.archive_reason === "spam" ? <Ban aria-hidden className="size-4 text-red-600" /> : <Archive aria-hidden className="size-4 text-zinc-500" />}
               </span>
               <div className="min-w-0 flex-1">
-                <Link href={conversationHref(c.id)} className="text-sm font-semibold text-zinc-900 hover:text-[#8A6A3A] hover:underline">
+                <Link href={conversationHref(c.id)} className="text-sm font-semibold text-zinc-900 hover:text-gold-ink hover:underline">
                   {c.name}
                 </Link>
                 <p className="text-xs text-zinc-500">

@@ -4,10 +4,13 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionMember } from "@/lib/auth";
 import type { ActionResult } from "@/lib/action-result";
-import { assign, markResponded, reopen, resolve } from "@/lib/comms/contacts";
+import { assign, markResponded, reopen, resolve, waitOnClient } from "@/lib/comms/contacts";
 import { contactFromRow, contactPatch } from "@/lib/comms/rows";
 import type { TeamMember } from "@/lib/comms/types";
 import { queueActionSchema } from "@/lib/validation/queue";
+import { planAssigned } from "@/lib/comms/notify-plan";
+import { notifyNow } from "@/lib/comms/notify-now";
+import { planTeam, type TeamRow } from "@/lib/comms/notify-store";
 
 /** One entry point for the queue's buttons, so every change is validated and logged the same way. */
 export async function queueAction(input: unknown): Promise<ActionResult> {
@@ -30,20 +33,25 @@ export async function queueAction(input: unknown): Promise<ActionResult> {
   const now = new Date();
   let next = contact;
 
+  let team: TeamMember[] = [];
   if (action.action === "assign") {
-    const { data: team } = await supabase.from("team_members").select("id, name, email, phone, escalation");
-    const members = (team ?? []) as TeamMember[];
-    if (action.assigneeId && !members.some((m) => m.id === action.assigneeId)) {
+    const { data } = await supabase.from("team_members").select("id, name, email, phone, escalation, role");
+    team = (data ?? []) as TeamMember[];
+    if (action.assigneeId && !team.some((m) => m.id === action.assigneeId)) {
       return { ok: false, error: "That person isn't on the team." };
     }
-    next = assign(contact, action.assigneeId, me.memberId, members, now);
+    next = assign(contact, action.assigneeId, me.memberId, team, now);
   } else if (action.action === "responded") {
     next = markResponded(contact, me.memberId, now);
   } else if (action.action === "resolve") {
     if (contact.status === "Resolved") return { ok: true };
     next = resolve(contact, me.memberId, now, action.reason ?? "");
+  } else if (action.action === "wait") {
+    if (contact.status === "Waiting on client") return { ok: true };
+    next = waitOnClient(contact, me.memberId, now);
   } else {
-    if (contact.status !== "Resolved") return { ok: true };
+    // Back to Open, from Resolved or from Waiting on client (the wait starts fresh).
+    if (contact.status === "Open") return { ok: true };
     next = reopen(contact, me.memberId, now);
   }
   if (next === contact) return { ok: true };
@@ -58,6 +66,19 @@ export async function queueAction(input: unknown): Promise<ActionResult> {
   if (error?.code === "23505") return { ok: false, error: "This client already has an open item in the inbox — use that one instead." };
   if (error) return { ok: false, error: "Couldn't save that change." };
   if (!updated?.length) return { ok: false, error: "Someone else just updated this contact — refreshed, try again." };
+
+  // "Assigned to you" (Board, Inbox and escalations all assign through here).
+  if (action.action === "assign" && next.assigneeId && next.assigneeId !== contact.assigneeId) {
+    const { data: client } = await supabase.from("clients").select("name").eq("id", contact.clientId).maybeSingle();
+    const planned = planAssigned(planTeam(team as unknown as TeamRow[]), {
+      assigneeId: next.assigneeId,
+      byId: me.memberId,
+      what: { kind: "client", clientName: client?.name ?? "A client" },
+      body: contact.summary,
+      urgent: contact.priority === "Urgent",
+    });
+    await notifyNow(planned, { contactId: contact.id, clientId: contact.clientId });
+  }
 
   revalidatePath("/dashboard", "layout");
   return { ok: true };

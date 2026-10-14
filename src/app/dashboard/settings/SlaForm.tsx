@@ -102,7 +102,7 @@ export function SlaForm({ initial, team }: { initial: SlaSettings; team: Array<{
       <fieldset className="space-y-3 rounded-md border border-zinc-200 p-3">
         <legend className="px-1 text-xs font-semibold text-zinc-700">
           <label className="flex items-center gap-2">
-            <input type="checkbox" checked={v.businessHours.enabled} onChange={(e) => bh({ enabled: e.target.checked })} className="accent-[#B08D57]" />
+            <input type="checkbox" checked={v.businessHours.enabled} onChange={(e) => bh({ enabled: e.target.checked })} className="accent-gold" />
             Only count business hours
           </label>
         </legend>
@@ -125,7 +125,7 @@ export function SlaForm({ initial, team }: { initial: SlaSettings; team: Array<{
                   type="button"
                   aria-pressed={on}
                   onClick={() => bh({ days: on ? v.businessHours.days.filter((x) => x !== i) : [...v.businessHours.days, i].sort() })}
-                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${on ? "bg-[#1C2B47] text-white" : "border border-zinc-300 text-zinc-500"}`}
+                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${on ? "bg-navy text-white" : "border border-zinc-300 text-zinc-500"}`}
                 >
                   {d}
                 </button>
@@ -135,7 +135,7 @@ export function SlaForm({ initial, team }: { initial: SlaSettings; team: Array<{
         </div>
       </fieldset>
 
-      <p className="rounded-md bg-[#B08D5712] p-3 text-sm text-zinc-800">
+      <p className="rounded-md bg-gold/7 p-3 text-sm text-zinc-800">
         A normal message turns <strong>amber after {minutesLabel(v.reminderMinutes)}</strong> and{" "}
         <strong>escalates after {minutesLabel(v.escalateMinutes)}</strong>
         {v.businessHours.enabled ? " of business time" : ""}. Urgent messages escalate <strong>{minutesLabel(v.urgentEscalateMinutes)}</strong>.
@@ -144,12 +144,12 @@ export function SlaForm({ initial, team }: { initial: SlaSettings; team: Array<{
       {v.reminderMinutes > v.escalateMinutes && <p className="text-xs text-amber-700">The reminder comes after escalation, so it will be skipped.</p>}
 
       {message && (
-        <p role={message.ok ? "status" : "alert"} className={`text-sm ${message.ok ? "text-[#3F7A5C]" : "text-red-600"}`}>
+        <p role={message.ok ? "status" : "alert"} className={`text-sm ${message.ok ? "text-success" : "text-red-600"}`}>
           {message.text}
         </p>
       )}
       <div className="flex gap-2">
-        <button type="submit" disabled={!dirty || pending} className="rounded-md bg-[#1C2B47] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
+        <button type="submit" disabled={!dirty || pending} className="rounded-md bg-navy px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
           {pending ? "Saving…" : "Save matrix"}
         </button>
         {dirty && (

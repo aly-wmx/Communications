@@ -288,6 +288,7 @@ export type Database = {
           claimed_until: string | null;
           client_id: string | null;
           contact_id: string | null;
+          ticket_id: string | null;
           created_at: string;
           delivery_error: string;
           email_status: string;
@@ -307,6 +308,7 @@ export type Database = {
           claimed_until?: string | null;
           client_id?: string | null;
           contact_id?: string | null;
+          ticket_id?: string | null;
           created_at?: string;
           delivery_error?: string;
           email_status?: string;
@@ -326,6 +328,7 @@ export type Database = {
           claimed_until?: string | null;
           client_id?: string | null;
           contact_id?: string | null;
+          ticket_id?: string | null;
           created_at?: string;
           delivery_error?: string;
           email_status?: string;
@@ -356,6 +359,66 @@ export type Database = {
         Row: { attempts: number; body: string; claimed_until: string | null; created_at: string; error: string; id: string; kind: string; link: string; mention_member_ids: string[]; status: string; title: string; urgent: boolean };
         Insert: { attempts?: number; body?: string; claimed_until?: string | null; created_at?: string; error?: string; id?: string; kind: string; link?: string; mention_member_ids?: string[]; status?: string; title: string; urgent?: boolean };
         Update: { attempts?: number; body?: string; claimed_until?: string | null; created_at?: string; error?: string; id?: string; kind?: string; link?: string; mention_member_ids?: string[]; status?: string; title?: string; urgent?: boolean };
+        Relationships: [];
+      };
+      tickets: {
+        Row: {
+          assignee_id: string | null;
+          business_id: string;
+          client_id: string | null;
+          created_at: string;
+          created_by: string | null;
+          details: string;
+          done_at: string | null;
+          due_at: string | null;
+          due_soon_notified_at: string | null;
+          id: string;
+          overdue_notified_at: string | null;
+          priority: string;
+          status: string;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          assignee_id?: string | null;
+          business_id: string;
+          client_id?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          details?: string;
+          done_at?: string | null;
+          due_at?: string | null;
+          due_soon_notified_at?: string | null;
+          id?: string;
+          overdue_notified_at?: string | null;
+          priority?: string;
+          status?: string;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          assignee_id?: string | null;
+          business_id?: string;
+          client_id?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          details?: string;
+          done_at?: string | null;
+          due_at?: string | null;
+          due_soon_notified_at?: string | null;
+          id?: string;
+          overdue_notified_at?: string | null;
+          priority?: string;
+          status?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      ticket_events: {
+        Row: { author_id: string | null; body: string; created_at: string; id: string; kind: string; mentions: string[]; ticket_id: string };
+        Insert: { author_id?: string | null; body?: string; created_at?: string; id?: string; kind: string; mentions?: string[]; ticket_id: string };
+        Update: { author_id?: string | null; body?: string; created_at?: string; id?: string; kind?: string; mentions?: string[]; ticket_id?: string };
         Relationships: [];
       };
       team_notes: {

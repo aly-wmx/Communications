@@ -22,7 +22,7 @@ export function ErrorPanel({ error, retry }: { error: Error & { digest?: string 
         <button
           type="button"
           onClick={() => retry()}
-          className="rounded-md bg-[#1C2B47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#15213a]"
+          className="rounded-md bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-navy-hover"
         >
           Try again
         </button>

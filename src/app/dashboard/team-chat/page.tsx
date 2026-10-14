@@ -32,7 +32,7 @@ export default async function TeamChatPage() {
 
   return (
     <div className="flex h-[calc(100dvh-6.5rem)] flex-col gap-4 lg:h-[calc(100dvh-3rem)]">
-      <PageHeader title="Team Chat" description="Questions for the team that aren't about one client. For a specific client, leave a 🔒 Team note on their conversation instead." />
+      <PageHeader title="Team Chat" description="Questions for the team that aren't about one client. For a specific client, leave a Team note on their conversation instead." />
       <div className="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row">
         <TeamChat
           messages={[...(channel ?? [])].reverse().map((m) => ({ id: m.id, authorId: m.author_id, authorName: nameOf(m.author_id), body: m.body, createdAt: m.created_at }))}

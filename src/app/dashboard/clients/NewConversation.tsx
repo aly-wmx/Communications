@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition, type FormEvent } from "reac
 import { useRouter } from "next/navigation";
 import { searchClients, startConversation, type ClientPick } from "../messaging/actions";
 import { conversationHref } from "@/lib/links";
+import { ChannelIcon } from "@/components/ChannelIcon";
 
 /** "+ New conversation": message an existing client, or a new person (created as a GHL contact). */
 export function NewConversation() {
@@ -65,7 +66,7 @@ export function NewConversation() {
       <button
         type="button"
         onClick={open}
-        className="rounded-md bg-[#1C2B47] px-3 py-1.5 text-sm font-semibold text-white hover:brightness-125"
+        className="rounded-md bg-navy px-3 py-1.5 text-sm font-semibold text-white hover:brightness-125"
       >
         + New conversation
       </button>
@@ -110,7 +111,7 @@ export function NewConversation() {
                   <p className="font-semibold text-zinc-900">{picked.name}</p>
                   <p className="text-xs text-zinc-500">{picked.detail || "No contact details"}</p>
                 </div>
-                <button type="button" onClick={() => setPicked(null)} className="text-xs font-semibold text-[#8A6A3A] hover:underline">
+                <button type="button" onClick={() => setPicked(null)} className="text-xs font-semibold text-gold-ink hover:underline">
                   Change
                 </button>
               </div>
@@ -167,9 +168,9 @@ export function NewConversation() {
                   type="button"
                   onClick={() => setChannel(c)}
                   disabled={c === "SMS" ? !hasPhone && mode === "existing" : !hasEmail && mode === "existing"}
-                  className={`rounded-full px-2.5 py-0.5 font-semibold disabled:opacity-40 ${channel === c ? "bg-[#1C2B47] text-white" : "text-zinc-500 hover:bg-zinc-100"}`}
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-semibold disabled:opacity-40 ${channel === c ? "bg-navy text-white" : "text-zinc-500 hover:bg-zinc-100"}`}
                 >
-                  {c === "SMS" ? "💬 Text" : "✉ Email"}
+                  <ChannelIcon channel={c === "SMS" ? "Text" : "Email"} className="size-3.5" /> {c === "SMS" ? "Text" : "Email"}
                 </button>
               ))}
             </div>
@@ -199,7 +200,7 @@ export function NewConversation() {
             <button
               type="submit"
               disabled={pending || !message.trim()}
-              className="rounded-md bg-[#8A6A3A] px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-50"
+              className="rounded-md bg-gold-ink px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-50"
             >
               {pending ? "Sending…" : "Send"}
             </button>

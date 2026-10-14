@@ -46,7 +46,7 @@ export default async function SettingsPage() {
             {ghl.map((h) => {
               const { text, ok } = ghlStatusLine(h, slaFromJson(settings?.sla).timeZone || "UTC");
               return (
-                <li key={h.businessId} className={`text-xs font-semibold ${ok ? "text-[#3F7A5C]" : "text-amber-700"}`}>
+                <li key={h.businessId} className={`text-xs font-semibold ${ok ? "text-success" : "text-amber-700"}`}>
                   {ghl.length > 1 ? `${h.businessName}: ` : ""}
                   {text}
                 </li>
@@ -59,7 +59,7 @@ export default async function SettingsPage() {
             <p className="font-medium text-zinc-800">Slack</p>
             <p className="text-xs text-zinc-500">Direct messages and team channel posts, as chosen under Notifications.</p>
           </div>
-          <p className={`text-xs font-semibold ${process.env.SLACK_BOT_TOKEN ? "text-[#3F7A5C]" : "text-amber-700"}`}>
+          <p className={`text-xs font-semibold ${process.env.SLACK_BOT_TOKEN ? "text-success" : "text-amber-700"}`}>
             {process.env.SLACK_BOT_TOKEN ? "Connected" : "Not connected — add SLACK_BOT_TOKEN in Vercel"}
           </p>
         </div>

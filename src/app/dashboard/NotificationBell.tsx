@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { AlarmClock, AtSign, Bell, CalendarClock, CalendarX, CircleCheck, Dot, type LucideIcon, MessageCircle, Siren, UserCheck } from "lucide-react";
 
 interface Item {
   id: string;
@@ -16,7 +17,17 @@ interface Item {
   read_at: string | null;
 }
 
-const ICON: Record<string, string> = { escalation: "🚨", reminder: "⏰", new_message: "💬", picked_up: "✅", mention: "@" };
+const ICON: Record<string, LucideIcon> = {
+  escalation: Siren,
+  reminder: AlarmClock,
+  new_message: MessageCircle,
+  picked_up: CircleCheck,
+  mention: AtSign,
+  assigned: UserCheck,
+  due_soon: CalendarClock,
+  overdue: CalendarX,
+  ticket_done: CircleCheck,
+};
 
 function ago(iso: string) {
   const m = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60_000));
@@ -109,7 +120,7 @@ export function NotificationBell({ onIncoming }: { onIncoming?: (n: Item) => voi
         aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`}
         className="flex w-full items-center justify-between rounded-md border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
       >
-        <span>🔔 Notifications</span>
+        <span className="flex items-center gap-2"><Bell aria-hidden className="size-4" /> Notifications</span>
         {unread > 0 && <span className="rounded-full bg-red-600 px-1.5 text-[11px] font-semibold text-white">{unread}</span>}
       </button>
 
@@ -119,12 +130,12 @@ export function NotificationBell({ onIncoming }: { onIncoming?: (n: Item) => voi
             <p className="text-sm font-semibold text-zinc-900">Notifications</p>
             <div className="flex gap-3 text-xs">
               {unread > 0 && (
-                <button type="button" onClick={() => void markRead(items.filter((i) => !i.read_at).map((i) => i.id))} className="text-[#8A6A3A] hover:underline">
+                <button type="button" onClick={() => void markRead(items.filter((i) => !i.read_at).map((i) => i.id))} className="text-gold-ink hover:underline">
                   Mark all read
                 </button>
               )}
               <Link href="/dashboard/notifications" onClick={() => setOpen(false)} className="text-zinc-500 hover:underline">
-                Settings
+                Alert settings
               </Link>
             </div>
           </div>
@@ -141,17 +152,18 @@ export function NotificationBell({ onIncoming }: { onIncoming?: (n: Item) => voi
                       setOpen(false);
                       router.push(n.link || "/dashboard/inbox?view=waiting");
                     }}
-                    className={`flex w-full gap-2 px-3 py-2.5 text-left hover:bg-zinc-50 ${n.read_at ? "" : "bg-[#B08D570d]"}`}
+                    className={`flex w-full gap-2 px-3 py-2.5 text-left hover:bg-zinc-50 ${n.read_at ? "" : "bg-gold/5"}`}
                   >
-                    <span aria-hidden className="mt-0.5 text-sm">
-                      {ICON[n.kind] ?? "•"}
-                    </span>
+                    {(() => {
+                      const Icon = ICON[n.kind] ?? Dot;
+                      return <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-zinc-500" />;
+                    })()}
                     <span className="min-w-0 flex-1">
                       <span className={`block text-sm ${n.read_at ? "text-zinc-700" : "font-semibold text-zinc-900"}`}>{n.title}</span>
                       {n.body && <span className="block truncate text-xs text-zinc-500">{n.body}</span>}
                       <span className="block text-[11px] text-zinc-500">{ago(n.created_at)}</span>
                     </span>
-                    {!n.read_at && <span className="mt-1.5 size-2 shrink-0 rounded-full bg-[#B08D57]" aria-label="unread" />}
+                    {!n.read_at && <span className="mt-1.5 size-2 shrink-0 rounded-full bg-gold" aria-label="unread" />}
                   </button>
                 </li>
               ))}

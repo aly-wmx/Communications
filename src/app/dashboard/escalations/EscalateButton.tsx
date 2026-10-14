@@ -99,7 +99,7 @@ export function EscalateButton({
                     type="checkbox"
                     checked={ids.includes(t.id)}
                     onChange={(e) => setIds(e.target.checked ? [...ids, t.id] : ids.filter((x) => x !== t.id))}
-                    className="accent-[#B08D57]"
+                    className="accent-gold"
                   />
                   {t.name}
                   {t.escalation && <span className="text-[11px] text-zinc-500">manager</span>}

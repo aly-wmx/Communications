@@ -38,7 +38,7 @@ export default async function TeamPage() {
       <div className="grid max-w-4xl gap-3 sm:grid-cols-3">
         {ROLES.map((r) => (
           <div key={r} className="rounded-md border border-zinc-200 bg-white p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#1C2B47]">{ROLE_LABELS[r]}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-navy">{ROLE_LABELS[r]}</p>
             <p className="mt-1 text-xs text-zinc-600">{ROLE_DESCRIPTIONS[r]}</p>
           </div>
         ))}

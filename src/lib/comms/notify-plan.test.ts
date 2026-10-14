@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { acknowledge, awaitingPickup, createContact, escalate, reminderDue } from "./contacts";
-import { escapeSlack, planEscalation, planNewMessage, planPickedUp, planReminder, responsible, type PlanContext, type PlanMember } from "./notify-plan";
+import {
+  escapeSlack,
+  planAssigned,
+  planEscalation,
+  planNewMessage,
+  planPickedUp,
+  planReminder,
+  planTicketDone,
+  planTicketDue,
+  planTicketMentions,
+  responsible,
+  type PlanContext,
+  type PlanMember,
+} from "./notify-plan";
 import { defaultSla } from "./sla";
 
 const team: PlanMember[] = [
@@ -91,5 +104,35 @@ describe("escapeSlack", () => {
       "&lt;!channel&gt; &lt;https://evil.example|Reset password&gt; &amp; more",
     );
     expect(escapeSlack("Plain message")).toBe("Plain message");
+  });
+});
+
+describe("assignments and tickets", () => {
+  it("tells the new assignee, never yourself or someone who left", () => {
+    expect(planAssigned(team, { assigneeId: "van", byId: "reid", what: { kind: "ticket", title: "Send drawings" } })).toEqual([
+      expect.objectContaining({ recipientId: "van", kind: "assigned", title: "Reid assigned you a ticket: Send drawings" }),
+    ]);
+    expect(planAssigned(team, { assigneeId: "van", byId: "reid", what: { kind: "client", clientName: "Hendersons" } })[0].title).toBe(
+      "Reid assigned Hendersons to you",
+    );
+    expect(planAssigned(team, { assigneeId: "van", byId: "van", what: { kind: "ticket", title: "x" } })).toEqual([]);
+    expect(planAssigned(team, { assigneeId: "gone", byId: "reid", what: { kind: "ticket", title: "x" } })).toEqual([]);
+    expect(planAssigned(team, { assigneeId: null, byId: "reid", what: { kind: "ticket", title: "x" } })).toEqual([]);
+  });
+
+  it("reminds the assignee about due and overdue tickets, or the creator when nobody has it", () => {
+    const t = { title: "Call permit office", assigneeId: "van", createdBy: "reid", dueLabel: "Oct 16, 9:00 AM" };
+    expect(planTicketDue(team, t, "overdue")).toEqual([expect.objectContaining({ recipientId: "van", kind: "overdue", urgent: true })]);
+    expect(planTicketDue(team, { ...t, assigneeId: null }, "due_soon")).toEqual([expect.objectContaining({ recipientId: "reid", kind: "due_soon" })]);
+  });
+
+  it("tells the creator a ticket is done, unless they finished it", () => {
+    expect(planTicketDone(team, { title: "x", createdBy: "reid" }, "van")).toEqual([expect.objectContaining({ recipientId: "reid", kind: "ticket_done" })]);
+    expect(planTicketDone(team, { title: "x", createdBy: "reid" }, "reid")).toEqual([]);
+  });
+
+  it("notifies @mentions in comments, once each, not the author", () => {
+    const planned = planTicketMentions(team, { title: "Send drawings" }, "van", ["reid", "reid", "van", "gone"], "Can you check?");
+    expect(planned.map((p) => p.recipientId)).toEqual(["reid"]);
   });
 });

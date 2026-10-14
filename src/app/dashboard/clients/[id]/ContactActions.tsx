@@ -70,7 +70,7 @@ export function ContactActions({
                 {c.status === "Waiting on client" && " · waiting on client"}
               </p>
               {c.awaitingPickup && <p className="mt-1 text-xs font-semibold text-red-700">Escalated — nobody has picked it up yet</p>}
-              {c.pickedUpLabel && <p className="mt-1 text-xs text-[#3F7A5C]">{c.pickedUpLabel}</p>}
+              {c.pickedUpLabel && <p className="mt-1 text-xs text-success">{c.pickedUpLabel}</p>}
             </div>
             <div className="flex flex-wrap items-center gap-2">
             <select
@@ -102,7 +102,7 @@ export function ContactActions({
                 type="button"
                 disabled={busy}
                 onClick={() => pickUp(c.id)}
-                className="rounded-md bg-[#3F7A5C] px-2.5 py-1 text-xs font-semibold text-white hover:brightness-110"
+                className="rounded-md bg-success px-2.5 py-1 text-xs font-semibold text-white hover:brightness-110"
               >
                 I&apos;ve got it
               </button>

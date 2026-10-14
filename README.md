@@ -15,6 +15,7 @@ tracker): same sign-in, sidebar and look, different content.
 | 1. Foundation | Sign-in (password + Google), roles, sidebar, Team, Businesses, Overview | Done |
 | 2. Daily work | Inbox (replaces Client Queue and Clients), Call Log, Team Chat, Archived | Done |
 | 3. Escalation & GHL | Escalations, Slack + email alerts, Settings, GHL sync per business | Done |
+| 3b. Board | Tickets beside client items (To do / In progress / Waiting / Done), "assigned to you", due and overdue reminders | Done |
 | 4. Outgoing & reporting | Reports and CSV export done; Announcements and templates not started | In progress |
 
 ## Access
