@@ -28,6 +28,8 @@ export async function checkSession(): Promise<SessionCheckResult> {
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) return { status: "no-session" };
   const email = userData.user.email ?? "";
+  // Same rule as verified_session_email() in the database: an unconfirmed address proves nothing.
+  if (!userData.user.email_confirmed_at) return { status: "not-on-team", email };
 
   // Compared exactly in code: ilike would treat "_" and "%" in an address as wildcards.
   // RLS returns nothing at all to someone who isn't on the team.
