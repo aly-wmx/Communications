@@ -197,6 +197,8 @@ export async function startConversation(input: unknown): Promise<SendResult> {
       // GHL finds an existing contact with this phone/email instead of duplicating it.
       const { id: ghlContactId } = await upsertGhlContact(token, locationId, { name: v.name, phone, email: v.email });
       const row = await ensureClient(sb, { ghlContactId, name: v.name, phone, email: v.email }, current.id);
+      // The phone or email may belong to a client already archived as spam.
+      if (row.archive_reason === "spam") return { ok: false, error: SPAM_BLOCK };
       if (v.project) await sb.from("clients").update({ project: v.project }).eq("id", row.id).eq("project", "");
       client = { id: row.id, name: row.name, phone: row.phone || phone, email: row.email || v.email, ghl_contact_id: ghlContactId };
     }

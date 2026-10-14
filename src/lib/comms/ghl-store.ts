@@ -60,6 +60,7 @@ interface ClientRow {
   owner_id: string | null;
   ghl_contact_id: string | null;
   archived_at: string | null;
+  archive_reason: string | null;
 }
 
 /** Escape LIKE wildcards so an exact match stays exact. */
@@ -77,7 +78,7 @@ export interface ClientIdentity {
  * Uses indexed lookups so it stays fast with thousands of clients.
  */
 export async function ensureClient(sb: Db, who: ClientIdentity, businessId: string): Promise<ClientRow> {
-  const cols = "id,name,phone,email,owner_id,ghl_contact_id,archived_at";
+  const cols = "id,name,phone,email,owner_id,ghl_contact_id,archived_at,archive_reason";
   if (who.ghlContactId) {
     const { data } = await sb.from("clients").select(cols).eq("ghl_contact_id", who.ghlContactId).maybeSingle();
     if (data) return data as ClientRow;
@@ -228,15 +229,14 @@ async function handleInbound(sb: Db, e: GhlEvent, client: ClientRow, retried = f
     // Client is already waiting on us: keep one row and the original clock.
     const id = open[0].id;
     let duplicate = false;
-    await updateContact<ContactForUpdate & { summary: string; status: string }>(sb, id, "id,history,summary,status,updated_at", (c) => {
-      if (c.status !== "Open") return null;
-      if ((c.history ?? []).some((h) => sameMessage(e, h, entry.message))) {
-        duplicate = true;
-        return null;
-      }
+    const appended = await updateContact<ContactForUpdate & { summary: string; status: string }>(sb, id, "id,history,summary,status,updated_at", (c) => {
+      duplicate = (c.history ?? []).some((h) => sameMessage(e, h, entry.message));
+      if (duplicate || c.status !== "Open") return null;
       return { history: [...(c.history ?? []), entry] as unknown as Json, summary: c.summary || e.body };
     });
-    return { action: duplicate ? "duplicate" : "appended", contactId: id };
+    if (duplicate) return { action: "duplicate", contactId: id };
+    if (appended) return { action: "appended", contactId: id };
+    // Answered, resolved or deleted since it was read: the client is waiting again, so open a new item below.
   }
 
   // Not waiting: was this exact message (seen once without an id) already turned into a contact, then answered?
