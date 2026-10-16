@@ -9,7 +9,7 @@ import { useNavProgress } from "./NavProgress";
 export function BusinessSwitcher({ businesses, currentId }: { businesses: Business[]; currentId: string }) {
   const [pending, startTransition] = useTransition();
   const [target, setTarget] = useState<Business | null>(null);
-  const { start, done } = useNavProgress();
+  const { start, done, setSwitching } = useNavProgress();
   const current = businesses.find((b) => b.id === currentId);
 
   // The page refreshes in place (no new URL), so the bar ends when the switch does.
@@ -18,13 +18,15 @@ export function BusinessSwitcher({ businesses, currentId }: { businesses: Busine
     // Only when a switch this started has finished; never while another screen is loading.
     if (!pending && switching.current) {
       switching.current = false;
+      setSwitching(false);
       done();
     }
-  }, [pending, done]);
+  }, [pending, done, setSwitching]);
 
   function choose(id: string) {
     setTarget(businesses.find((b) => b.id === id) ?? null);
     switching.current = true;
+    setSwitching(true);
     start();
     startTransition(() => selectBusiness(id));
   }
@@ -55,15 +57,6 @@ export function BusinessSwitcher({ businesses, currentId }: { businesses: Busine
         </select>
       </div>
 
-      {/* Until the new business loads, the page still shows the old one: cover it so it isn't mistaken for current. */}
-      {pending && (
-        <div role="status" className="fixed inset-0 z-40 grid place-items-center bg-page/70 backdrop-blur-[1px] lg:left-60">
-          <p className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-medium text-navy shadow-lg">
-            <Loader2 aria-hidden className="size-4 animate-spin" />
-            Switching to {target?.name ?? "the business"}…
-          </p>
-        </div>
-      )}
     </div>
   );
 }

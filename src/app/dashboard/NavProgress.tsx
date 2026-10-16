@@ -2,9 +2,16 @@
 
 import { createContext, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
-type Progress = { start: () => void; done: () => void };
-const ProgressContext = createContext<Progress>({ start: () => {}, done: () => {} });
+type Progress = {
+  start: () => void;
+  done: () => void;
+  /** A business switch is loading: the page shows the usual loading placeholder meanwhile. */
+  switching: boolean;
+  setSwitching: (on: boolean) => void;
+};
+const ProgressContext = createContext<Progress>({ start: () => {}, done: () => {}, switching: false, setSwitching: () => {} });
 
 /** Start or end the top loading bar by hand (e.g. while switching business). */
 export const useNavProgress = () => useContext(ProgressContext);
@@ -32,6 +39,7 @@ function UrlWatcher({ onChange }: { onChange: () => void }) {
  */
 export function NavProgress({ children }: { children: React.ReactNode }) {
   const [active, setActive] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const timer = useRef<number | undefined>(undefined);
 
   const done = useCallback(() => {
@@ -62,8 +70,8 @@ export function NavProgress({ children }: { children: React.ReactNode }) {
     };
   }, [start]);
 
-  // Stable, so components that end the bar (the business switcher) don't re-run on every bar change.
-  const value = useMemo(() => ({ start, done }), [start, done]);
+  // Stable functions, so components that end the bar (the business switcher) don't re-run on every bar change.
+  const value = useMemo(() => ({ start, done, switching, setSwitching }), [start, done, switching]);
 
   return (
     <ProgressContext.Provider value={value}>
@@ -78,5 +86,17 @@ export function NavProgress({ children }: { children: React.ReactNode }) {
         {active ? "Loading…" : ""}
       </span>
     </ProgressContext.Provider>
+  );
+}
+
+/** The page area: while a business switch loads, the usual loading placeholder instead of the previous business's data. */
+export function MainContent({ children }: { children: React.ReactNode }) {
+  const { switching } = useNavProgress();
+  return (
+    <>
+      {switching && <PageSkeleton />}
+      {/* Kept mounted (just hidden) so nothing reloads twice when the new business arrives. */}
+      <div hidden={switching}>{children}</div>
+    </>
   );
 }

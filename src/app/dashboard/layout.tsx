@@ -12,6 +12,7 @@ import { DashboardNav } from "./DashboardNav";
 import { LiveUpdates } from "./LiveUpdates";
 import { SidebarShell } from "./SidebarShell";
 import { Providers } from "./Providers";
+import { MainContent } from "./NavProgress";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -84,7 +85,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </div>
       </SidebarShell>
 
-      <main className="min-w-0 flex-1 overflow-x-auto px-4 py-4 sm:px-6 sm:py-6">{children}</main>
+      <main className="min-w-0 flex-1 overflow-x-auto px-4 py-4 sm:px-6 sm:py-6">
+        <MainContent>{children}</MainContent>
+      </main>
     </div>
     </Providers>
   );
