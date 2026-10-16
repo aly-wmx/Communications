@@ -1,12 +1,13 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
   Building2,
   Inbox,
   KanbanSquare,
+  Loader2,
   LayoutDashboard,
   MessagesSquare,
   Phone,
@@ -33,6 +34,12 @@ const ICONS: Record<string, LucideIcon> = {
   "/dashboard/businesses": Building2,
   "/dashboard/settings": Settings,
 };
+
+/** The page's icon, swapped for a spinner while that page loads (same size, so nothing shifts). */
+function NavIcon({ icon: Icon }: { icon: LucideIcon }) {
+  const { pending } = useLinkStatus();
+  return pending ? <Loader2 aria-hidden className="size-4 shrink-0 animate-spin text-gold-ink" /> : <Icon aria-hidden className="size-4 shrink-0" />;
+}
 
 // From the shared access list, so the menu matches what "My access" tells people.
 const SECTIONS = (Object.keys(GROUP_LABELS) as Array<Exclude<PageGroup, "inbox">>).map((group) => ({
@@ -71,7 +78,7 @@ export function DashboardNav({
           active ? "border-gold bg-gold/7 text-navy" : "border-transparent text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
         }`}
       >
-        {Icon && <Icon aria-hidden className="size-4 shrink-0" />}
+        {Icon && <NavIcon icon={Icon} />}
         <span className="flex-1">{tab.label}</span>
         {badge && (
           <span
