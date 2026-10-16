@@ -8,6 +8,7 @@ import { DEPARTMENTS } from "@/lib/stages";
 import type { Database } from "@/lib/supabase/database.types";
 import { deleteMember, inviteMember, updateMemberField } from "./actions";
 import { useConfirm } from "@/components/ui/confirm";
+import { BusinessAccessPicker } from "./BusinessAccessPicker";
 
 type Member = Database["public"]["Tables"]["team_members"]["Row"];
 
@@ -18,10 +19,18 @@ export function MemberRow({
   member,
   isMe,
   onMessage,
+  businesses,
+  granted,
+  suggested,
 }: {
   member: Member;
   isMe: boolean;
   onMessage: (message: string, tone: "error" | "info") => void;
+  businesses: Array<{ id: string; name: string }>;
+  /** Business ids this person can open. */
+  granted: string[];
+  /** Business ids their GoHighLevel sub-accounts suggest. */
+  suggested: string[];
 }) {
   const [pending, startTransition] = useTransition();
   const confirm = useConfirm();
@@ -89,6 +98,15 @@ export function MemberRow({
             onSave={(value) => updateMemberField({ id: member.id, field: "role", value })}
           />
         )}
+      </td>
+      <td className="px-1.5 py-1">
+        <BusinessAccessPicker
+          member={{ id: member.id, name: member.name }}
+          isAdmin={member.role === "admin"}
+          businesses={businesses}
+          granted={granted}
+          suggested={suggested}
+        />
       </td>
       <td className="px-1.5 py-1">
         <EditableSelectCell

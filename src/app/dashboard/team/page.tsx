@@ -1,8 +1,7 @@
 import { PageHeader } from "@/components/PageHeader";
 import { requireAdminPage } from "@/lib/auth";
-import { ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS, isRole, type Role } from "@/lib/roles";
+import { ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS } from "@/lib/roles";
 import { suggestedAccess } from "@/lib/access-suggestions";
-import { AccessMatrix } from "./AccessMatrix";
 import { createClient } from "@/lib/supabase/server";
 import { TeamTable } from "./TeamTable";
 import { GhlUsers } from "./GhlUsers";
@@ -36,11 +35,10 @@ export default async function TeamPage() {
         description="Who can sign in, what they can do, which businesses they can open, and who gets escalations. Anyone with an email here can sign in with Google or a password; clear the email to take access away."
       />
 
-      <TeamTable members={members ?? []} meId={me.memberId} />
-
-      <AccessMatrix
+      <TeamTable
+        members={members ?? []}
+        meId={me.memberId}
         businesses={businesses ?? []}
-        members={(members ?? []).filter((m) => isRole(m.role)).map((m) => ({ id: m.id, name: m.name, role: m.role as Role }))}
         granted={(grants ?? []).map((g) => `${g.member_id}|${g.business_id}`)}
         suggested={suggestions.map((s) => `${s.memberId}|${s.businessId}`)}
       />
