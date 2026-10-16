@@ -5,6 +5,7 @@ import type { Database, Json } from "@/lib/supabase/database.types";
 import { closeInTime, normalisePhone, sameMessage, type GhlEvent, type MessageRecord } from "./ghl";
 import { planNewMessage } from "./notify-plan";
 import { NOT_CONNECTED, resolveGhlAccounts, type GhlAccount } from "./ghl-accounts";
+import { withAccess } from "@/lib/access";
 import { GhlError } from "./ghl-api";
 import { loadTeam, planTeam, saveNotifications } from "./notify-store";
 
@@ -31,10 +32,27 @@ function matches(given: string, expected: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** GHL webhook: ?secret= (GHL's basic webhook action can't add headers) or x-webhook-secret, against GHL_WEBHOOK_SECRET. */
-export function webhookSecretOk(req: Request): boolean {
-  const given = req.headers.get("x-webhook-secret") ?? new URL(req.url).searchParams.get("secret") ?? "";
-  return matches(given, process.env.GHL_WEBHOOK_SECRET ?? "");
+/** The secret a webhook gave: ?secret= (GHL's basic webhook action can't add headers) or x-webhook-secret. */
+const givenSecret = (req: Request) => req.headers.get("x-webhook-secret") ?? new URL(req.url).searchParams.get("secret") ?? "";
+
+/**
+ * GHL webhook secret for a sub-account. A sub-account with its own
+ * GHL_WEBHOOK_SECRET_<location id> accepts only that, so one sub-account's
+ * workflow URL can't post into another business. Others (and payloads that
+ * name no location) use the shared GHL_WEBHOOK_SECRET.
+ */
+export function webhookSecretOk(req: Request, locationId: string): boolean {
+  const own = locationId ? process.env[`GHL_WEBHOOK_SECRET_${locationId}`] : undefined;
+  return matches(givenSecret(req), own ?? process.env.GHL_WEBHOOK_SECRET ?? "");
+}
+
+/** GET check of a webhook URL: right for at least one sub-account. */
+export function webhookSecretKnown(req: Request): boolean {
+  const given = givenSecret(req);
+  const secrets = Object.entries(process.env)
+    .filter(([k]) => k === "GHL_WEBHOOK_SECRET" || k.startsWith("GHL_WEBHOOK_SECRET_"))
+    .map(([, v]) => v ?? "");
+  return secrets.some((s) => matches(given, s));
 }
 
 /**
@@ -43,15 +61,6 @@ export function webhookSecretOk(req: Request): boolean {
  */
 export function cronSecretOk(req: Request): boolean {
   return matches(req.headers.get("x-sync-secret") ?? "", process.env.CRON_SECRET ?? "");
-}
-
-/** The business new clients go to: the one asked for if it exists, otherwise the oldest (Watermark). */
-export async function businessIdFor(sb: Db, wanted?: string | null): Promise<string> {
-  const { data } = await sb.from("businesses").select("id").order("created_at");
-  const ids = (data ?? []).map((b) => b.id);
-  const id = wanted && ids.includes(wanted) ? wanted : ids[0];
-  if (!id) throw new Error("No businesses exist yet.");
-  return id;
 }
 
 /** Every business's GoHighLevel account (see ghl-accounts). */
@@ -105,8 +114,10 @@ export interface ClientIdentity {
  */
 export async function ensureClient(sb: Db, who: ClientIdentity, businessId: string): Promise<ClientRow> {
   const cols = "id,name,phone,email,owner_id,ghl_contact_id,archived_at,archive_reason,business_id";
+  // Matched only within this business: a client in another business carrying the same GHL id must
+  // never receive this business's messages (a browser can't set ghl_contact_id; this is the second lock).
   if (who.ghlContactId) {
-    const { data } = await sb.from("clients").select(cols).eq("ghl_contact_id", who.ghlContactId).maybeSingle();
+    const { data } = await sb.from("clients").select(cols).eq("ghl_contact_id", who.ghlContactId).eq("business_id", businessId).maybeSingle();
     if (data) return data as ClientRow;
   }
 
@@ -152,9 +163,10 @@ export async function ensureClient(sb: Db, who: ClientIdentity, businessId: stri
       .single();
     if (!error) return data as ClientRow;
     if (error.message.includes("clients_ghl_contact_id_key") && who.ghlContactId) {
-      // Created by a parallel run a moment ago.
-      const { data: existing } = await sb.from("clients").select(cols).eq("ghl_contact_id", who.ghlContactId).single();
-      if (existing) return existing as ClientRow;
+      // Created by a parallel run a moment ago, in this business. If it's in another business, refuse.
+      const { data: existing } = await sb.from("clients").select(cols).eq("ghl_contact_id", who.ghlContactId).maybeSingle();
+      if (existing?.business_id === businessId) return existing as ClientRow;
+      if (existing) throw new Error(`GHL contact ${who.ghlContactId} already belongs to a client in another business; not filing it here.`);
     }
     if (!error.message.includes("clients_name_key")) throw error;
   }
@@ -350,11 +362,15 @@ async function handleOutbound(sb: Db, e: GhlEvent, client: ClientRow) {
 }
 
 async function notifyNewMessage(sb: Db, contactId: string, clientId: string, clientName: string, e: GhlEvent) {
-  const [{ data: contact }, { data: settings }, team] = await Promise.all([
+  const [{ data: contact }, { data: settings }, team, { data: client }] = await Promise.all([
     sb.from("contacts").select("assignee_id, priority").eq("id", contactId).maybeSingle(),
     sb.from("settings").select("sla").eq("id", 1).maybeSingle(),
     loadTeam(sb),
+    sb.from("clients").select("business_id").eq("id", clientId).maybeSingle(),
   ]);
+  // Plan with only the people who can open this business, so "nobody assigned" falls back to its
+  // coordinators instead of to a default assignee who can't see it (and would be dropped).
+  const reachable = client ? await withAccess(sb, client.business_id, planTeam(team)) : planTeam(team);
   const planned = planNewMessage(
     {
       clientName,
@@ -365,7 +381,7 @@ async function notifyNewMessage(sb: Db, contactId: string, clientId: string, cli
       assigneeId: contact?.assignee_id ?? "",
       defaultAssigneeId: (settings?.sla as { defaultAssigneeId?: string } | null)?.defaultAssigneeId ?? "",
     },
-    planTeam(team),
+    reachable,
   );
   await saveNotifications(sb, planned, { contactId, clientId });
 }

@@ -115,10 +115,11 @@ async function onlyWithAccess(
   about: { clientId?: string; ticketId?: string },
 ): Promise<PlannedNotification[]> {
   if (!planned.length || (!about.clientId && !about.ticketId)) return planned;
-  const { data: owner } = about.ticketId
+  const { data: owner, error } = about.ticketId
     ? await sb.from("tickets").select("business_id").eq("id", about.ticketId).maybeSingle()
     : await sb.from("clients").select("business_id").eq("id", about.clientId!).maybeSingle();
-  if (!owner) return planned;
+  // If we can't tell which business it's about, tell nobody rather than everyone.
+  if (error || !owner) return [];
   const ids = await memberIdsWithAccess(sb, owner.business_id);
   return planned.filter((p) => ids.has(p.recipientId));
 }
@@ -500,6 +501,8 @@ async function remindTickets(sb: Db, team: PlanMember[], timeZone: string, now: 
     .select("id, title, client_id, assignee_id, created_by, due_at, status, due_soon_notified_at, overdue_notified_at")
     .neq("status", "done")
     .not("due_at", "is", null)
+    // Only tickets with a reminder still to send, so old overdue ones can't crowd out the rest.
+    .or("due_soon_notified_at.is.null,overdue_notified_at.is.null")
     .lte("due_at", new Date(now.getTime() + DUE_SOON_MS).toISOString())
     .order("due_at")
     .limit(500);

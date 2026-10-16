@@ -11,6 +11,7 @@ import { slaFromJson } from "@/lib/comms/rows";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/database.types";
 import { logCallSchema } from "@/lib/validation/calls";
+import { memberIdsWithAccess } from "@/lib/access";
 
 const STATUS = { connected: "completed", missed: "no-answer", voicemail: "voicemail", failed: "failed" } as const;
 
@@ -30,7 +31,7 @@ export async function logCall(input: unknown): Promise<ActionResult | { ok: true
   if (Number.isNaN(when.getTime()) || when.getTime() > Date.now() + 60_000) return { ok: false, error: "Check the call time." };
 
   const supabase = await createClient();
-  const { data: client } = await supabase.from("clients").select("id, owner_id").eq("id", v.clientId).maybeSingle();
+  const { data: client } = await supabase.from("clients").select("id, owner_id, business_id").eq("id", v.clientId).maybeSingle();
   if (!client) return { ok: false, error: "That client no longer exists." };
 
   const channel = v.outcome === "voicemail" ? "Voicemail" : v.outcome === "missed" && v.direction === "inbound" ? "Missed call" : "Call";
@@ -81,6 +82,10 @@ export async function logCall(input: unknown): Promise<ActionResult | { ok: true
   // A client we missed needs a call back: put it in the queue.
   if (missed && !open?.length) {
     const { data: settings } = await supabase.from("settings").select("sla").eq("id", 1).maybeSingle();
+    // The client's owner, else the default assignee, but only someone who can open this business
+    // (the database refuses anyone else, which would lose the call-back); otherwise unassigned.
+    const canOpen = await memberIdsWithAccess(supabase, client.business_id);
+    const assigneeId = [client.owner_id, slaFromJson(settings?.sla).defaultAssigneeId].find((id) => id && canOpen.has(id)) ?? "";
     const c = createContact(
       {
         clientId: client.id,
@@ -88,7 +93,7 @@ export async function logCall(input: unknown): Promise<ActionResult | { ok: true
         priority: "Normal",
         receivedAt: when.toISOString(),
         summary: v.note,
-        assigneeId: client.owner_id || slaFromJson(settings?.sla).defaultAssigneeId,
+        assigneeId,
       },
       me.memberId,
       new Date(),

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSessionMember } from "@/lib/auth";
-import { memberIdsWithAccess } from "@/lib/access";
+import { memberIdsWithAccess, withAccess } from "@/lib/access";
 import type { ActionResult } from "@/lib/action-result";
 import { acknowledge, escalate } from "@/lib/comms/contacts";
 import { serviceDb } from "@/lib/comms/ghl-store";
@@ -112,7 +112,8 @@ export async function acknowledgeEscalation(input: unknown): Promise<ActionResul
   if (!updated?.length) return { ok: false, error: "Someone else just updated this — refresh and check who has it." };
 
   // Tell the others to stand down.
-  const planned = planPickedUp(planContext(contact, clientName, sla, now), planTeam(team), {
+  const { data: owner } = await sb.from("clients").select("business_id").eq("id", contact.clientId).maybeSingle();
+  const planned = planPickedUp(planContext(contact, clientName, sla, now), owner ? await withAccess(sb, owner.business_id, planTeam(team)) : planTeam(team), {
     byId: me.memberId,
     notifiedIds: pending.notifiedIds,
   });

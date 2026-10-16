@@ -60,12 +60,16 @@ export function BoardView({
     setBusy(card.id);
     setMoved((m) => ({ ...m, [card.id]: to }));
     startTransition(async () => {
-      for (const step of steps) {
-        const result = await step();
-        if (!result.ok) {
-          toast(result.error, "error");
-          break;
+      try {
+        for (const step of steps) {
+          const result = await step();
+          if (!result.ok) {
+            toast(result.error, "error");
+            break;
+          }
         }
+      } catch {
+        toast("Couldn't reach the server, so the card wasn't moved. Check your connection and try again.", "error");
       }
       // The refreshed board from the server is now the truth (moved or not).
       setMoved((m) => {

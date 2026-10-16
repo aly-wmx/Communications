@@ -130,7 +130,7 @@ export default async function BoardPage({ searchParams }: PageProps<"/dashboard/
           events={open.events}
           clientName={open.clientName}
           team={team}
-          assignable={assignable}
+          assignable={open.ticket.businessId === current.id ? assignable : await withAccess(supabase, open.ticket.businessId, team)}
           meId={me.memberId}
           canAssignOthers={canAssign}
           timeZone={tz}

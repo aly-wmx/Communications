@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { businessFieldSchema, newBusinessSchema } from "./businesses";
+import { ticketUpdateSchema } from "./tickets";
 import { memberFieldSchema } from "./team";
 
 describe("memberFieldSchema", () => {
@@ -42,5 +43,23 @@ describe("business schemas", () => {
     expect(location("short")).toBe(false);
     expect(location("has spaces in it")).toBe(false);
     expect(location("https://app.gohighlevel.com/v2/location/abc")).toBe(false);
+  });
+});
+
+describe("ticket due dates", () => {
+  const due = (value: string) =>
+    ticketUpdateSchema.safeParse({ id: "1b4e28ba-2fa1-41d2-883f-0016d3cca427", field: "due", value }).success;
+  const year = new Date().getUTCFullYear();
+
+  it("accepts a real date in the next few years, or none", () => {
+    expect(due(`${year}-12-01`)).toBe(true);
+    expect(due(`${year + 1}-03-15`)).toBe(true);
+    expect(due("")).toBe(true);
+  });
+
+  it("refuses a half-typed year, so it can't be saved as overdue", () => {
+    expect(due("0002-10-16")).toBe(false);
+    expect(due("0020-10-16")).toBe(false);
+    expect(due(`${year + 50}-01-01`)).toBe(false);
   });
 });

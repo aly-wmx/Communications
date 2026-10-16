@@ -6,6 +6,7 @@ import { getBusinessContext } from "@/lib/business";
 import { canAssignTickets } from "@/lib/roles";
 import { findMentions } from "@/lib/comms/mentions";
 import { memberIdsWithAccess } from "@/lib/access";
+import { serviceDb } from "@/lib/comms/ghl-store";
 import { createClient } from "@/lib/supabase/server";
 import { formatStamp } from "@/lib/format-time";
 import { slaFromJson } from "@/lib/comms/rows";
@@ -29,6 +30,12 @@ type Result = { ok: true } | { ok: false; error: string };
 const NO_ACCESS = "That person doesn't have access to this business. An admin can give it on the Team page.";
 const NOT_ALLOWED_TO_ASSIGN = "Only a manager or admin can assign a ticket to someone else. You can take it yourself.";
 
+/** A database refusal in words for people: our rules' own messages, or the assign rule for a policy refusal. */
+function refusal(error: { code?: string; message: string } | null): string | null {
+  if (error?.code !== "42501") return null;
+  return error.message.includes("row-level security") ? NOT_ALLOWED_TO_ASSIGN : error.message;
+}
+
 async function context() {
   const supabase = await createClient();
   const [{ data: team }, { data: settings }] = await Promise.all([
@@ -44,8 +51,9 @@ function mayAssign(role: string, meId: string, from: string | null, to: string |
   return to === meId || (to === null && from === meId);
 }
 
-async function log(supabase: Awaited<ReturnType<typeof createClient>>, ticketId: string, authorId: string, kind: string, body: string) {
-  const { error } = await supabase.from("ticket_events").insert({ ticket_id: ticketId, author_id: authorId, kind, body });
+/** History entries ("Moved to Waiting"): written by the server, since browsers may only add comments. */
+async function log(ticketId: string, authorId: string, kind: string, body: string) {
+  const { error } = await serviceDb().from("ticket_events").insert({ ticket_id: ticketId, author_id: authorId, kind, body });
   if (error) console.error("ticket saved, but its history entry wasn't", ticketId, kind, error);
 }
 
@@ -55,24 +63,29 @@ export async function createTicket(input: unknown): Promise<TicketResult> {
   const parsed = newTicketSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the form." };
   const v = parsed.data;
-  const { current } = await getBusinessContext();
-  if (!current) return { ok: false, error: "Add a business first." };
-
   const assigneeId = v.assigneeId || null;
   if (!mayAssign(me.role, me.memberId, null, assigneeId)) return { ok: false, error: NOT_ALLOWED_TO_ASSIGN };
 
   const { supabase, team, sla } = await context();
-  if (assigneeId && !team.some((t) => t.id === assigneeId)) return { ok: false, error: "That person isn't on the team." };
-  if (assigneeId && !(await memberIdsWithAccess(supabase, current.id)).has(assigneeId)) return { ok: false, error: NO_ACCESS };
+  // About a client: the ticket belongs to that client's business (whatever the sidebar shows),
+  // provided you can open it. Otherwise: the business you're looking at.
+  let businessId: string;
   if (v.clientId) {
     const { data: client } = await supabase.from("clients").select("business_id").eq("id", v.clientId).maybeSingle();
-    if (!client || client.business_id !== current.id) return { ok: false, error: "That client isn't in this business." };
+    if (!client) return { ok: false, error: "That client wasn't found, or it's in a business you can't open." };
+    businessId = client.business_id;
+  } else {
+    const { current } = await getBusinessContext();
+    if (!current) return { ok: false, error: "Add a business first." };
+    businessId = current.id;
   }
+  if (assigneeId && !team.some((t) => t.id === assigneeId)) return { ok: false, error: "That person isn't on the team." };
+  if (assigneeId && !(await memberIdsWithAccess(supabase, businessId)).has(assigneeId)) return { ok: false, error: NO_ACCESS };
 
   const { data, error } = await supabase
     .from("tickets")
     .insert({
-      business_id: current.id,
+      business_id: businessId,
       client_id: v.clientId || null,
       title: v.title,
       details: v.details,
@@ -85,10 +98,10 @@ export async function createTicket(input: unknown): Promise<TicketResult> {
     .single();
   if (error || !data) {
     console.error("create ticket failed", error);
-    return { ok: false, error: error?.code === "42501" ? NOT_ALLOWED_TO_ASSIGN : "Couldn't create the ticket." };
+    return { ok: false, error: refusal(error) ?? "Couldn't create the ticket." };
   }
 
-  await log(supabase, data.id, me.memberId, "created", "Created the ticket");
+  await log(data.id, me.memberId, "created", "Created the ticket");
   await notifyNow(
     planAssigned(team, { assigneeId, byId: me.memberId, what: { kind: "ticket", title: v.title }, body: v.details, urgent: v.priority === "urgent" }),
     { ticketId: data.id, clientId: v.clientId || undefined },
@@ -116,6 +129,8 @@ export async function updateTicket(input: unknown): Promise<Result> {
     case "status": {
       if (change.value === before.status) return { ok: true };
       patch = { status: change.value, done_at: change.value === "done" ? new Date().toISOString() : null };
+      // Back from Done: it can be due soon or overdue again, so its reminders can go out again.
+      if (before.status === "done") Object.assign(patch, { due_soon_notified_at: null, overdue_notified_at: null });
       history = ["status", `Moved to ${COLUMN_LABELS[change.value]}`];
       break;
     }
@@ -167,11 +182,11 @@ export async function updateTicket(input: unknown): Promise<Result> {
   const { data: saved, error } = await supabase.from("tickets").update(patch).eq("id", before.id).eq("updated_at", row.updated_at).select("id");
   if (error) {
     console.error("update ticket failed", error);
-    return { ok: false, error: error.code === "42501" ? NOT_ALLOWED_TO_ASSIGN : "Couldn't save that change." };
+    return { ok: false, error: refusal(error) ?? "Couldn't save that change." };
   }
   if (!saved?.length) return { ok: false, error: "Someone else just changed this ticket. It's been refreshed; try again." };
 
-  await log(supabase, before.id, me.memberId, history[0], history[1]);
+  await log(before.id, me.memberId, history[0], history[1]);
   if (change.field === "assignee") {
     await notifyNow(
       planAssigned(team, { assigneeId: change.value || null, byId: me.memberId, what: { kind: "ticket", title: before.title }, body: before.details, urgent: before.priority === "urgent" }),

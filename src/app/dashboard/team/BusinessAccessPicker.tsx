@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { ChevronDown } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm";
 import { setBusinessAccess } from "./actions";
 
 /**
@@ -27,6 +28,7 @@ export function BusinessAccessPicker({
   suggested: string[];
 }) {
   const toast = useToast();
+  const confirm = useConfirm();
   const [open, setOpen] = useState(false);
   // Fixed to the button, so the table's scroll area can't clip it on the last rows.
   const [at, setAt] = useState<{ top: number; left: number } | null>(null);
@@ -52,7 +54,11 @@ export function BusinessAccessPicker({
       button.current?.focus();
     };
     // It's pinned to where the button was; close rather than float away when the page moves.
-    const moved = () => setOpen(false);
+    const moved = (e: Event) => {
+      // Scrolling the list itself is fine; the page moving isn't.
+      if (box.current && e.target instanceof Node && box.current.contains(e.target)) return;
+      setOpen(false);
+    };
     document.addEventListener("mousedown", outside);
     document.addEventListener("keydown", escape);
     window.addEventListener("scroll", moved, true);
@@ -70,8 +76,17 @@ export function BusinessAccessPicker({
   const names = businesses.filter((b) => has.has(b.id)).map((b) => b.name);
   const waiting = suggested.filter((id) => !has.has(id)).length;
 
-  function toggle(businessId: string, name: string) {
+  async function toggle(businessId: string, name: string) {
     const grant = !has.has(businessId);
+    if (!grant) {
+      const ok = await confirm({
+        title: `Remove ${name} from ${member.name}?`,
+        body: `They'll stop seeing ${name} and its alerts straight away, and anything of theirs still open there (conversation items, tickets, clients they own) becomes unassigned.`,
+        confirmLabel: "Remove access",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
     const flip = (s: Set<string>) => {
       const next = new Set(s);
       if (grant) next.add(businessId);
@@ -132,7 +147,7 @@ export function BusinessAccessPicker({
                 type="checkbox"
                 checked={has.has(b.id)}
                 disabled={pending}
-                onChange={() => toggle(b.id, b.name)}
+                onChange={() => void toggle(b.id, b.name)}
                 className="size-4 accent-navy"
               />
               <span className="flex-1 text-sm text-zinc-900">{b.name}</span>

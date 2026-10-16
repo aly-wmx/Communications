@@ -1,13 +1,17 @@
 import { parseGhlPayload, type GhlEvent } from "@/lib/comms/ghl";
-import { businessIdFor, ghlAccounts, recordGhlEvent, serviceDb, webhookSecretOk, type Db } from "@/lib/comms/ghl-store";
+import { ghlAccounts, recordGhlEvent, serviceDb, webhookSecretKnown, webhookSecretOk, type Db } from "@/lib/comms/ghl-store";
 
 /**
  * GoHighLevel → client queue (pushed by a GHL workflow, within seconds).
- * POST /api/ghl/webhook?secret=…[&business=<id>]  (or header x-webhook-secret)
- * The business is the one connected to the GHL location that sent it; &business= is the fallback.
+ * POST /api/ghl/webhook?secret=…  (or header x-webhook-secret)
+ *
+ * The business is the one connected to the GHL sub-account (location) that
+ * sent it. A sub-account that isn't connected to a business is ignored, never
+ * filed under another business. A payload that names no location belongs to
+ * the original connection (GHL_LOCATION_ID). The secret is checked per
+ * sub-account (see webhookSecretOk).
  *
  * Inbound: adds to the client's open contact, or opens a new one.
- * Outbound: marks the client's open contacts as responded.
  * The once-a-minute sync (/api/ghl/sync) covers the same messages; duplicates are ignored.
  */
 
@@ -18,22 +22,24 @@ function locationIdIn(payload: unknown): string {
   return typeof id === "string" ? id : "";
 }
 
-async function businessFor(sb: Db, payload: unknown, wanted: string | null): Promise<string> {
-  const location = locationIdIn(payload);
-  const connected = location ? (await ghlAccounts(sb)).find((a) => a.locationId === location) : undefined;
-  return connected?.businessId ?? businessIdFor(sb, wanted);
+/** The business for this sub-account, or null when it isn't connected to one. */
+async function businessFor(sb: Db, location: string): Promise<string | null> {
+  const accounts = await ghlAccounts(sb);
+  const account = location ? accounts.find((a) => a.locationId === location) : accounts.find((a) => a.isOriginal);
+  return account?.businessId ?? null;
 }
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function POST(req: Request): Promise<Response> {
-  if (!webhookSecretOk(req)) return json(401, { error: "Unauthorized" });
-
   let event: GhlEvent;
-  let payload: unknown;
+  let location: string;
   try {
-    payload = await req.json();
+    const payload = await req.json();
+    location = locationIdIn(payload);
+    // Checked before anything is parsed further or written.
+    if (!webhookSecretOk(req, location)) return json(401, { error: "Unauthorized" });
     event = parseGhlPayload(payload);
   } catch (err) {
     return json(400, { error: (err as Error).message });
@@ -45,7 +51,8 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const sb = serviceDb();
-    const businessId = await businessFor(sb, payload, new URL(req.url).searchParams.get("business"));
+    const businessId = await businessFor(sb, location);
+    if (!businessId) return json(200, { ok: true, action: "ignored", reason: "that GoHighLevel sub-account isn't connected to a business" });
     const result = await recordGhlEvent(sb, event, businessId);
     return json(200, { ok: true, ...result });
   } catch (err) {
@@ -56,5 +63,5 @@ export async function POST(req: Request): Promise<Response> {
 
 export function GET(req: Request): Response {
   // Lets you check the URL and secret are right without sending data.
-  return webhookSecretOk(req) ? json(200, { ok: true }) : json(401, { error: "Unauthorized" });
+  return webhookSecretKnown(req) ? json(200, { ok: true }) : json(401, { error: "Unauthorized" });
 }

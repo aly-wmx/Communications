@@ -52,6 +52,9 @@ export const MentionTextarea = forwardRef<HTMLTextAreaElement, Props>(function M
         return;
       }
       if (e.key === "Escape") {
+        // Closes just the suggestions, not the dialog or panel the box sits in.
+        e.preventDefault();
+        e.stopPropagation();
         setQuery(null);
         return;
       }

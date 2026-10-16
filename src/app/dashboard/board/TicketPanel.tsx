@@ -8,7 +8,6 @@ import { EditableTextCell } from "@/components/EditableCell";
 import { MentionTextarea } from "@/components/MentionTextarea";
 import { Avatar } from "@/components/ui/avatar";
 import { StatusPill } from "@/components/ui/status-pill";
-import { useToast } from "@/components/ui/toast";
 import { formatStamp, zonedDayKey } from "@/lib/format-time";
 import { conversationHref } from "@/lib/links";
 import { COLUMN_LABELS, COLUMNS, PRIORITIES, PRIORITY_LABELS, dueState, type Ticket } from "@/lib/tickets";
@@ -51,27 +50,57 @@ export function TicketPanel({
   closeHref: string;
 }) {
   const router = useRouter();
-  const toast = useToast();
+  const dialog = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const [pending, startTransition] = useTransition();
   const [comment, setComment] = useState("");
-  const [details, setDetails] = useState(ticket.details);
+  // Messages show inside the panel: a modal dialog sits above the page's toasts.
+  const [status, setStatus] = useState<{ text: string; ok: boolean } | null>(null);
   const nameOf = (id: string | null) => team.find((t) => t.id === id)?.name ?? "Former teammate";
   const due = dueState(ticket, new Date());
 
+  // Details: follows the saved text (e.g. a teammate's edit arriving live) unless you're typing in it,
+  // and only saves when you changed it from what it was when you started.
+  const [details, setDetails] = useState(ticket.details);
+  const [editingFrom, setEditingFrom] = useState<string | null>(null);
+  const [lastSaved, setLastSaved] = useState(ticket.details);
+  if (ticket.details !== lastSaved) {
+    setLastSaved(ticket.details);
+    if (editingFrom === null) setDetails(ticket.details);
+  }
+
+  // A real modal: focus stays inside, Escape closes, the page behind doesn't scroll.
   useEffect(() => {
+    const d = dialog.current;
+    if (d && !d.open) d.showModal();
     heading.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && router.push(closeHref, { scroll: false });
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [closeHref, router]);
+    const scroll = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = scroll;
+    };
+  }, []);
 
   const save = (change: Omit<TicketUpdate, "id">, done?: string) =>
     startTransition(async () => {
-      const result = await updateTicket({ id: ticket.id, ...change });
-      if (!result.ok) toast(result.error, "error");
-      else if (done) toast(done);
+      try {
+        const result = await updateTicket({ id: ticket.id, ...change });
+        setStatus(result.ok ? (done ? { text: done, ok: true } : null) : { text: result.error, ok: false });
+      } catch {
+        setStatus({ text: "Couldn't reach the server. Check your connection and try again.", ok: false });
+      }
     });
+
+  function saveDetails() {
+    if (editingFrom !== null && details !== editingFrom) save({ field: "details", value: details }, "Details saved");
+    setEditingFrom(null);
+  }
+
+  /** Close, saving Details first if they were being edited. */
+  function close() {
+    saveDetails();
+    router.push(closeHref, { scroll: false });
+  }
 
   // Coordinators: themselves or nobody (plus whoever has it now, so the field can show it).
   const people = canAssignOthers ? assignable : assignable.filter((t) => t.id === meId || t.id === ticket.assigneeId);
@@ -80,21 +109,29 @@ export function TicketPanel({
     const body = comment.trim();
     if (!body) return;
     startTransition(async () => {
-      const result = await addTicketComment({ ticketId: ticket.id, body });
-      if (!result.ok) return toast(result.error, "error");
-      setComment("");
+      try {
+        const result = await addTicketComment({ ticketId: ticket.id, body });
+        if (!result.ok) return setStatus({ text: result.error, ok: false });
+        setComment("");
+      } catch {
+        setStatus({ text: "Couldn't post the comment. Check your connection and try again.", ok: false });
+      }
     });
   }
 
   return (
-    <>
-      <Link href={closeHref} scroll={false} aria-label="Close ticket" className="fixed inset-0 z-40 bg-black/30" />
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="ticket-title"
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col overflow-y-auto bg-white shadow-2xl"
-      >
+    <dialog
+      ref={dialog}
+      aria-labelledby="ticket-title"
+      // Escape: close (the @mention list stops Escape first when it's open).
+      onCancel={(e) => {
+        e.preventDefault();
+        close();
+      }}
+      // A click on the dimmed backdrop (outside the panel) closes it.
+      onClick={(e) => e.target === dialog.current && close()}
+      className="m-0 ml-auto h-dvh max-h-none w-full max-w-lg overflow-y-auto bg-white p-0 shadow-2xl backdrop:bg-black/30 open:flex open:flex-col"
+    >
         <header className="flex items-start gap-3 border-b border-zinc-200 px-5 py-4">
           <div className="min-w-0 flex-1">
             <h2 id="ticket-title" ref={heading} tabIndex={-1} className="sr-only">
@@ -110,10 +147,15 @@ export function TicketPanel({
               )}
             </div>
           </div>
-          <Link href={closeHref} scroll={false} aria-label="Close" className="grid size-10 place-items-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800">
+          <button type="button" onClick={close} aria-label="Close" className="grid size-10 place-items-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800">
             <X aria-hidden className="size-5" />
-          </Link>
+          </button>
         </header>
+        {status && (
+          <p role={status.ok ? "status" : "alert"} className={`border-b px-5 py-2 text-sm ${status.ok ? "border-emerald-100 bg-emerald-50 text-emerald-800" : "border-red-100 bg-red-50 text-red-700"}`}>
+            {status.text}
+          </p>
+        )}
 
         <div className="grid grid-cols-2 gap-3 border-b border-zinc-100 px-5 py-4">
           <label className="text-xs font-medium text-zinc-600">
@@ -148,7 +190,11 @@ export function TicketPanel({
               type="date"
               disabled={pending}
               defaultValue={ticket.dueAt ? zonedDayKey(ticket.dueAt, timeZone) : ""}
-              onChange={(e) => save({ field: "due", value: e.target.value })}
+              // Saved when you leave the field: typing a year fires a change for every digit ("0002").
+              onBlur={(e) => {
+                const value = e.currentTarget.value;
+                if (value !== (ticket.dueAt ? zonedDayKey(ticket.dueAt, timeZone) : "")) save({ field: "due", value });
+              }}
               className={`mt-1 ${select}`}
             />
           </label>
@@ -187,7 +233,8 @@ export function TicketPanel({
             maxLength={5000}
             value={details}
             onChange={(e) => setDetails(e.target.value)}
-            onBlur={() => details !== ticket.details && save({ field: "details", value: details }, "Details saved")}
+            onFocus={() => setEditingFrom(details)}
+            onBlur={saveDetails}
             placeholder="What needs doing, links, anything the next person should know."
             className={`mt-1 resize-y ${select}`}
           />
@@ -239,7 +286,6 @@ export function TicketPanel({
             </button>
           </div>
         </footer>
-      </aside>
-    </>
+    </dialog>
   );
 }
