@@ -64,7 +64,8 @@ export async function queueAction(input: unknown): Promise<ActionResult> {
     .eq("updated_at", row.updated_at)
     .select("id");
   if (error?.code === "23505") return { ok: false, error: "This client already has an open item in the inbox — use that one instead." };
-  if (error) return { ok: false, error: "Couldn't save that change." };
+  // 42501: a database rule said no, with a message meant for people (e.g. no access to this business).
+  if (error) return { ok: false, error: error.code === "42501" ? error.message : "Couldn't save that change." };
   if (!updated?.length) return { ok: false, error: "Someone else just updated this contact — refreshed, try again." };
 
   // "Assigned to you" (Board, Inbox and escalations all assign through here).

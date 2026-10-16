@@ -21,6 +21,7 @@ import type { Json } from "@/lib/supabase/database.types";
 import { conversationHref, ticketHref } from "@/lib/links";
 import { formatStamp } from "@/lib/format-time";
 import { DUE_SOON_MS, dueState } from "@/lib/tickets";
+import { memberIdsWithAccess } from "@/lib/access";
 
 /** Saving, sending and scheduling notifications. Server only (service role). */
 
@@ -79,6 +80,8 @@ export async function saveNotifications(
     alwaysSend?: boolean;
   },
 ): Promise<number> {
+  // Nobody hears about a business they can't open (escalations, reminders, assignments, mentions…).
+  planned = await onlyWithAccess(sb, planned, about);
   if (!planned.length) return 0;
   const rules = about.alwaysSend ? null : await deliveryRules(sb);
   const link =
@@ -103,6 +106,21 @@ export async function saveNotifications(
   if (error) throw error;
   await queueChannelPosts(sb, planned, link);
   return planned.length;
+}
+
+/** Drop recipients who can't open the business the notification is about (none to drop for the shared team channel). */
+async function onlyWithAccess(
+  sb: Db,
+  planned: PlannedNotification[],
+  about: { clientId?: string; ticketId?: string },
+): Promise<PlannedNotification[]> {
+  if (!planned.length || (!about.clientId && !about.ticketId)) return planned;
+  const { data: owner } = about.ticketId
+    ? await sb.from("tickets").select("business_id").eq("id", about.ticketId).maybeSingle()
+    : await sb.from("clients").select("business_id").eq("id", about.clientId!).maybeSingle();
+  if (!owner) return planned;
+  const ids = await memberIdsWithAccess(sb, owner.business_id);
+  return planned.filter((p) => ids.has(p.recipientId));
 }
 
 /** Settings → Notifications: which kinds go out by email and Slack DM. */
@@ -167,7 +185,7 @@ async function openContactsSince(sb: Db, startedAt: string) {
   for (let page = 0; ; page++) {
     const { data, error } = await sb
       .from("contacts")
-      .select("*, clients(name)")
+      .select("*, clients(name, business_id)")
       .eq("status", "Open")
       .gte("received_at", startedAt)
       .order("id")
@@ -189,16 +207,27 @@ export async function runEngine(sb: Db, now = new Date()): Promise<{ reminded: n
   if (settingsError) throw settingsError;
   const sla = slaFromJson(settings?.sla);
   const members = planTeam(team);
+  // Per business, only the people who can open it, so a client's history never says someone was told who wasn't.
+  const reachable = new Map<string, PlanMember[]>();
+  const membersFor = async (businessId: string | undefined) => {
+    if (!businessId) return members;
+    if (!reachable.has(businessId)) {
+      const ids = await memberIdsWithAccess(sb, businessId);
+      reachable.set(businessId, members.filter((m) => ids.has(m.id)));
+    }
+    return reachable.get(businessId)!;
+  };
   let reminded = 0;
   let escalated = 0;
 
   for (const row of rows) {
-    const { clients, ...contactRow } = row as typeof row & { clients: { name: string } | null };
+    const { clients, ...contactRow } = row as typeof row & { clients: { name: string; business_id: string } | null };
+    const forBusiness = await membersFor(clients?.business_id);
     const c = contactFromRow(contactRow);
     const clientName = clients?.name ?? "A client";
 
     if (needsEscalation(c, sla, now)) {
-      const planned = planEscalation(planContext(c, clientName, sla, now), members, { raisedById: "", automatic: true });
+      const planned = planEscalation(planContext(c, clientName, sla, now), forBusiness, { raisedById: "", automatic: true });
       // Nobody receives escalations and nobody owns it: leave it overdue (the health panel says why) rather than "escalated to nobody".
       if (!planned.length) continue;
       const notifiedIds = planned.map((p) => p.recipientId);
@@ -229,7 +258,7 @@ export async function runEngine(sb: Db, now = new Date()): Promise<{ reminded: n
         .select("id");
       if (updated?.length) {
         try {
-          await saveNotifications(sb, planReminder(planContext(c, clientName, sla, now), members), { contactId: c.id, clientId: c.clientId });
+          await saveNotifications(sb, planReminder(planContext(c, clientName, sla, now), forBusiness), { contactId: c.id, clientId: c.clientId });
           reminded++;
         } catch (err) {
           console.error("reminder notifications failed; will retry", c.id, err);

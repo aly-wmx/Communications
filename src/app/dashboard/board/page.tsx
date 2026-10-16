@@ -7,6 +7,7 @@ import { loadQueue } from "@/lib/comms/load";
 import { canAssignTickets } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 import { businessTimeZone } from "@/lib/time-zone";
+import { withAccess } from "@/lib/access";
 import { buildBoard, DONE_DAYS, ticketFromRow, type BoardFilters, type TypeFilter } from "@/lib/tickets";
 import { BoardView } from "./BoardView";
 import { NewTicket } from "./NewTicket";
@@ -47,6 +48,8 @@ export default async function BoardPage({ searchParams }: PageProps<"/dashboard/
   if (ticketsRes.error) throw ticketsRes.error;
   const tickets = (ticketsRes.data ?? []).map(ticketFromRow);
   const team = teamRes.data ?? [];
+  // Only people who can open this business can be given its tickets (names still come from the whole team).
+  const assignable = await withAccess(supabase, current.id, team);
 
   // Names for the clients on the Board (and the open ticket's client).
   const recentContacts = contacts.filter((c) => c.status !== "Resolved" || (c.resolvedAt && c.resolvedAt >= doneSince));
@@ -90,7 +93,7 @@ export default async function BoardPage({ searchParams }: PageProps<"/dashboard/
   return (
     <div className="space-y-4">
       <PageHeader title="Board" description="Tickets and client items in one place: what's to do, in progress, waiting and done this week.">
-        <NewTicket team={team} meId={me.memberId} canAssignOthers={canAssign} />
+        <NewTicket team={assignable} meId={me.memberId} canAssignOthers={canAssign} />
       </PageHeader>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -110,7 +113,7 @@ export default async function BoardPage({ searchParams }: PageProps<"/dashboard/
             { href: href({ who: "unassigned" }), label: "Unassigned", current: who === "unassigned" },
           ]}
         />
-        <PersonFilter team={team.filter((t) => t.id !== me.memberId)} value={["mine", "team", "unassigned"].includes(who) ? "" : who} />
+        <PersonFilter team={assignable.filter((t) => t.id !== me.memberId)} value={["mine", "team", "unassigned"].includes(who) ? "" : who} />
         {clientFilter && (
           <a href={href({ client: "" })} className="text-xs font-semibold text-gold-ink hover:underline">
             {clientNames[clientFilter] ?? "This client"} only · show all
@@ -127,6 +130,7 @@ export default async function BoardPage({ searchParams }: PageProps<"/dashboard/
           events={open.events}
           clientName={open.clientName}
           team={team}
+          assignable={assignable}
           meId={me.memberId}
           canAssignOthers={canAssign}
           timeZone={tz}

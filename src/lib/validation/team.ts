@@ -34,3 +34,10 @@ export const memberFieldSchema = z.discriminatedUnion("field", [
 ]);
 
 export type MemberFieldInput = z.input<typeof memberFieldSchema>;
+
+/** Give (grant: true) or take away one business for one teammate. */
+export const businessAccessSchema = z.object({
+  memberId: z.string().min(1).max(100),
+  businessId: z.string().uuid(),
+  grant: z.boolean(),
+});

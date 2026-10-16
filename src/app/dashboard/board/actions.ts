@@ -5,6 +5,7 @@ import { getSessionMember } from "@/lib/auth";
 import { getBusinessContext } from "@/lib/business";
 import { canAssignTickets } from "@/lib/roles";
 import { findMentions } from "@/lib/comms/mentions";
+import { memberIdsWithAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { formatStamp } from "@/lib/format-time";
 import { slaFromJson } from "@/lib/comms/rows";
@@ -25,6 +26,7 @@ type TicketPatch = Database["public"]["Tables"]["tickets"]["Update"];
 export type TicketResult = { ok: true; id: string } | { ok: false; error: string };
 type Result = { ok: true } | { ok: false; error: string };
 
+const NO_ACCESS = "That person doesn't have access to this business. An admin can give it on the Team page.";
 const NOT_ALLOWED_TO_ASSIGN = "Only a manager or admin can assign a ticket to someone else. You can take it yourself.";
 
 async function context() {
@@ -61,6 +63,7 @@ export async function createTicket(input: unknown): Promise<TicketResult> {
 
   const { supabase, team, sla } = await context();
   if (assigneeId && !team.some((t) => t.id === assigneeId)) return { ok: false, error: "That person isn't on the team." };
+  if (assigneeId && !(await memberIdsWithAccess(supabase, current.id)).has(assigneeId)) return { ok: false, error: NO_ACCESS };
   if (v.clientId) {
     const { data: client } = await supabase.from("clients").select("business_id").eq("id", v.clientId).maybeSingle();
     if (!client || client.business_id !== current.id) return { ok: false, error: "That client isn't in this business." };
@@ -121,6 +124,7 @@ export async function updateTicket(input: unknown): Promise<Result> {
       if (to === before.assigneeId) return { ok: true };
       if (!mayAssign(me.role, me.memberId, before.assigneeId, to)) return { ok: false, error: NOT_ALLOWED_TO_ASSIGN };
       if (to && !team.some((t) => t.id === to)) return { ok: false, error: "That person isn't on the team." };
+      if (to && !(await memberIdsWithAccess(supabase, before.businessId)).has(to)) return { ok: false, error: NO_ACCESS };
       patch = { assignee_id: to };
       history = ["assigned", to ? `Assigned to ${nameOf(to)}` : "Unassigned"];
       break;

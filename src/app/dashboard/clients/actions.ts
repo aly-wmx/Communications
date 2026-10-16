@@ -6,6 +6,7 @@ import { getSessionMember, requireAdmin } from "@/lib/auth";
 import { resolve } from "@/lib/comms/contacts";
 import { addGhlTags, GhlError, removeGhlTags, updateGhlContact } from "@/lib/comms/ghl-api";
 import { readyGhlAccount, serviceDb } from "@/lib/comms/ghl-store";
+import { memberIdsWithAccess } from "@/lib/access";
 import { toE164 } from "@/lib/comms/outbound";
 import { createClient } from "@/lib/supabase/server";
 import { archiveSchema, clientUpdateSchema, stageSchema } from "@/lib/validation/clients";
@@ -45,6 +46,9 @@ export async function updateClient(input: unknown): Promise<UpdateClientResult> 
   if (v.ownerId) {
     const { data: owner } = await supabase.from("team_members").select("id").eq("id", v.ownerId).maybeSingle();
     if (!owner) return { ok: false, error: "That owner isn't on the team." };
+    if (!(await memberIdsWithAccess(supabase, before.business_id)).has(v.ownerId)) {
+      return { ok: false, error: "That person doesn't have access to this business. An admin can give it on the Team page." };
+    }
   }
 
   // RLS: any team member may update clients.

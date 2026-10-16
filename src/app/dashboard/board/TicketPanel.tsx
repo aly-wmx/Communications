@@ -32,6 +32,7 @@ export function TicketPanel({
   events,
   clientName,
   team,
+  assignable,
   meId,
   canAssignOthers,
   timeZone,
@@ -40,7 +41,10 @@ export function TicketPanel({
   ticket: Ticket;
   events: TicketEvent[];
   clientName: string;
+  /** Everyone, for names in the history. */
   team: Array<{ id: string; name: string }>;
+  /** People who can open this business: the only ones it can be given to or who can be mentioned. */
+  assignable: Array<{ id: string; name: string }>;
   meId: string;
   canAssignOthers: boolean;
   timeZone: string;
@@ -70,7 +74,7 @@ export function TicketPanel({
     });
 
   // Coordinators: themselves or nobody (plus whoever has it now, so the field can show it).
-  const people = canAssignOthers ? team : team.filter((t) => t.id === meId || t.id === ticket.assigneeId);
+  const people = canAssignOthers ? assignable : assignable.filter((t) => t.id === meId || t.id === ticket.assigneeId);
 
   function post() {
     const body = comment.trim();
@@ -218,7 +222,7 @@ export function TicketPanel({
             <MentionTextarea
               value={comment}
               onValueChange={setComment}
-              team={team.filter((t) => t.id !== meId)}
+              team={assignable.filter((t) => t.id !== meId)}
               onSubmit={post}
               rows={2}
               placeholder="Comment… type @ to mention someone"

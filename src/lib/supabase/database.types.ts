@@ -421,6 +421,18 @@ export type Database = {
         Update: { author_id?: string | null; body?: string; created_at?: string; id?: string; kind?: string; mentions?: string[]; ticket_id?: string };
         Relationships: [];
       };
+      team_member_businesses: {
+        Row: { business_id: string; granted_at: string; granted_by: string | null; member_id: string };
+        Insert: { business_id: string; granted_at?: string; granted_by?: string | null; member_id: string };
+        Update: { business_id?: string; granted_at?: string; granted_by?: string | null; member_id?: string };
+        Relationships: [];
+      };
+      ghl_user_locations: {
+        Row: { business_id: string; ghl_user_id: string; seen_at: string };
+        Insert: { business_id: string; ghl_user_id: string; seen_at?: string };
+        Update: { business_id?: string; ghl_user_id?: string; seen_at?: string };
+        Relationships: [];
+      };
       team_notes: {
         Row: { author_id: string | null; body: string; client_id: string | null; created_at: string; flagged_for: string | null; id: string; mentions: string[] };
         Insert: { author_id?: string | null; body: string; client_id?: string | null; created_at?: string; flagged_for?: string | null; id?: string; mentions?: string[] };
@@ -507,6 +519,7 @@ export type Database = {
       current_member_role: { Args: never; Returns: string };
       is_team_member: { Args: never; Returns: boolean };
       release_integration_lock: { Args: { lock_key: string } | { lock_key: string; holder: string }; Returns: undefined };
+      member_has_business_access: { Args: { member: string; business: string }; Returns: boolean };
       take_integration_lock: { Args: { lock_key: string; ttl_seconds: number } | { lock_key: string; ttl_seconds: number; holder: string }; Returns: boolean };
     };
     Enums: { [_ in never]: never };

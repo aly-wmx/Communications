@@ -9,7 +9,8 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { getSessionMember, requireAdmin } from "@/lib/auth";
 import type { ActionResult } from "@/lib/action-result";
 import type { Database } from "@/lib/supabase/database.types";
-import { memberFieldSchema, memberIdSchema } from "@/lib/validation/team";
+import { businessAccessSchema, memberFieldSchema, memberIdSchema } from "@/lib/validation/team";
+import { suggestedAccess } from "@/lib/access-suggestions";
 
 /** Removed addresses must not walk back in through "allowed sign-in domains". */
 async function blockAutoJoin(email: string) {
@@ -144,8 +145,66 @@ export async function addFromGhl(input: unknown): Promise<ActionResult> {
     ghl_user_id: u.id,
   });
   if (error) return { ok: false, error: explain(error.message, error.message.includes("ghl_user") ? "That GHL user is already linked to a teammate." : "Couldn't add them.") };
+
+  // The admin confirmed adding them with access to the businesses whose GHL sub-accounts they're in.
+  if (role !== "admin") {
+    const me = await getSessionMember();
+    const { data: locations } = await supabase.from("ghl_user_locations").select("business_id").eq("ghl_user_id", u.id);
+    const { data: added } = await supabase.from("team_members").select("id").eq("ghl_user_id", u.id).maybeSingle();
+    if (added && me && locations?.length) {
+      const { error: grantError } = await supabase
+        .from("team_member_businesses")
+        .insert(locations.map((l) => ({ member_id: added.id, business_id: l.business_id, granted_by: me.memberId })));
+      if (grantError) return { ok: false, error: "Added them, but their business access couldn't be saved. Tick it under Business access." };
+    }
+  }
   revalidatePath("/dashboard/team");
   return { ok: true };
+}
+
+/** Give or take away one business for one teammate (admins always see every business). */
+export async function setBusinessAccess(input: unknown): Promise<ActionResult> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+  const parsed = businessAccessSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const { memberId, businessId, grant } = parsed.data;
+  const me = await getSessionMember();
+  if (!me) return { ok: false, error: "You're not signed in as a team member." };
+
+  const supabase = await createClient();
+  const { data: member } = await supabase.from("team_members").select("role").eq("id", memberId).maybeSingle();
+  if (!member) return { ok: false, error: "That teammate no longer exists." };
+  if (member.role === "admin") return { ok: false, error: "Admins always see every business." };
+
+  const { error } = grant
+    ? await supabase.from("team_member_businesses").upsert({ member_id: memberId, business_id: businessId, granted_by: me.memberId }, { ignoreDuplicates: true })
+    : await supabase.from("team_member_businesses").delete().eq("member_id", memberId).eq("business_id", businessId);
+  if (error) return { ok: false, error: "Couldn't change their access." };
+  revalidatePath("/dashboard", "layout");
+  return { ok: true };
+}
+
+/** Grant every access GoHighLevel suggests (teammates in a business's sub-account who can't open it yet). */
+export async function grantSuggestedAccess(): Promise<ActionResult & { updated?: number }> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+  const me = await getSessionMember();
+  if (!me) return { ok: false, error: "You're not signed in as a team member." };
+  const supabase = await createClient();
+  const [{ data: members }, { data: locations }, { data: grants }] = await Promise.all([
+    supabase.from("team_members").select("id, role, ghl_user_id"),
+    supabase.from("ghl_user_locations").select("ghl_user_id, business_id"),
+    supabase.from("team_member_businesses").select("member_id, business_id"),
+  ]);
+  const todo = suggestedAccess({ members: members ?? [], locations: locations ?? [], grants: grants ?? [] });
+  if (!todo.length) return { ok: true, updated: 0 };
+  const { error } = await supabase
+    .from("team_member_businesses")
+    .upsert(todo.map((t) => ({ member_id: t.memberId, business_id: t.businessId, granted_by: me.memberId })), { ignoreDuplicates: true });
+  if (error) return { ok: false, error: "Couldn't grant the suggested access." };
+  revalidatePath("/dashboard", "layout");
+  return { ok: true, updated: todo.length };
 }
 
 /** Link (or unlink with "") a portal teammate to a GoHighLevel user, and copy over any missing phone. */

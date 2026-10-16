@@ -8,6 +8,7 @@ import { needsEscalation } from "@/lib/comms/sla";
 import { createClient } from "@/lib/supabase/server";
 import { EscalationsView, type View } from "./EscalationsView";
 import { NoBusiness } from "@/components/NoBusiness";
+import { withAccess } from "@/lib/access";
 
 const RESOLVED_DAYS = 7;
 
@@ -63,7 +64,7 @@ export default async function EscalationsPage({ searchParams }: PageProps<"/dash
         picked={sortQueue(open.filter((c) => c.escalations.length > 0 && !awaitingPickup(c)), sla, now)}
         resolved={resolved}
         clients={Object.fromEntries((clientRows ?? []).map((c) => [c.id, c.name]))}
-        team={team ?? []}
+        team={await withAccess(supabase, current.id, team ?? [])}
         meId={me.memberId}
         sla={sla}
       />

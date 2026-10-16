@@ -86,6 +86,7 @@ interface ClientRow {
   ghl_contact_id: string | null;
   archived_at: string | null;
   archive_reason: string | null;
+  business_id: string;
 }
 
 /** Escape LIKE wildcards so an exact match stays exact. */
@@ -103,7 +104,7 @@ export interface ClientIdentity {
  * Uses indexed lookups so it stays fast with thousands of clients.
  */
 export async function ensureClient(sb: Db, who: ClientIdentity, businessId: string): Promise<ClientRow> {
-  const cols = "id,name,phone,email,owner_id,ghl_contact_id,archived_at,archive_reason";
+  const cols = "id,name,phone,email,owner_id,ghl_contact_id,archived_at,archive_reason,business_id";
   if (who.ghlContactId) {
     const { data } = await sb.from("clients").select(cols).eq("ghl_contact_id", who.ghlContactId).maybeSingle();
     if (data) return data as ClientRow;
@@ -281,6 +282,17 @@ async function handleInbound(sb: Db, e: GhlEvent, client: ClientRow, retried = f
 
   const { data: settings } = await sb.from("settings").select("sla").eq("id", 1).maybeSingle();
   const defaultAssignee = (settings?.sla as { defaultAssigneeId?: string } | undefined)?.defaultAssigneeId || null;
+  // The client's owner, else the default assignee, but only someone who can open this business
+  // (the database refuses anyone else); otherwise unassigned, and whoever has access is told.
+  let assigneeId: string | null = null;
+  for (const candidate of [client.owner_id, defaultAssignee]) {
+    if (!candidate) continue;
+    const { data: allowed } = await sb.rpc("member_has_business_access", { member: candidate, business: client.business_id });
+    if (allowed) {
+      assigneeId = candidate;
+      break;
+    }
+  }
   const id = `ct_${randomUUID()}`;
   const { error } = await sb.from("contacts").insert({
     id,
@@ -289,7 +301,7 @@ async function handleInbound(sb: Db, e: GhlEvent, client: ClientRow, retried = f
     priority: "Normal",
     received_at: e.at,
     summary: e.body,
-    assignee_id: client.owner_id || defaultAssignee,
+    assignee_id: assigneeId,
     status: "Open",
     history: [entry] as unknown as Json,
     source: "ghl",

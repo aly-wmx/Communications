@@ -79,7 +79,7 @@ export interface ActionAccess {
 }
 
 export const ACTIONS: readonly ActionAccess[] = [
-  { label: "See every client and conversation", roles: ALL, note: "Departments filter what you see first; they don't hide anything." },
+  { label: "See the clients and conversations of your businesses", roles: ALL, note: "Admins see every business; everyone else sees the businesses ticked for them on the Team page." },
   {
     label: "Reply to clients and start new conversations",
     roles: ALL,

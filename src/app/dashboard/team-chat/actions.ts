@@ -6,6 +6,7 @@ import { getSessionMember } from "@/lib/auth";
 import type { ActionResult } from "@/lib/action-result";
 import { serviceDb } from "@/lib/comms/ghl-store";
 import { findMentions } from "@/lib/comms/mentions";
+import { memberIdsWithAccess } from "@/lib/access";
 import { dispatchPending, saveNotifications } from "@/lib/comms/notify-store";
 import { createClient } from "@/lib/supabase/server";
 import { noteSchema } from "@/lib/validation/notes";
@@ -26,14 +27,19 @@ export async function addTeamNote(input: unknown): Promise<ActionResult> {
 
   const supabase = await createClient();
   let clientName = "";
+  let businessId = "";
   if (clientId) {
-    const { data: client } = await supabase.from("clients").select("name").eq("id", clientId).maybeSingle();
+    const { data: client } = await supabase.from("clients").select("name, business_id").eq("id", clientId).maybeSingle();
     if (!client) return { ok: false, error: "That client no longer exists." };
     clientName = client.name;
+    businessId = client.business_id;
   }
   const { data: team } = await supabase.from("team_members").select("id, name, email, phone, escalation");
   const flagged = flagFor && clientId ? (team ?? []).find((t) => t.id === flagFor) : undefined;
   if (flagFor && clientId && !flagged) return { ok: false, error: "That teammate isn't on the team." };
+  if (flagged && !(await memberIdsWithAccess(supabase, businessId)).has(flagged.id)) {
+    return { ok: false, error: `${flagged.name} doesn't have access to this business, so they can't reply to this client.` };
+  }
   const mentions = findMentions(body, team ?? []).filter((id) => id !== me.memberId && id !== flagged?.id);
 
   // RLS makes sure people can only post as themselves.

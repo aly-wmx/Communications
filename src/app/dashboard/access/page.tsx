@@ -51,6 +51,10 @@ export default async function AccessPage({ searchParams }: PageProps<"/dashboard
     supabase.from("notification_prefs").select("slack, email").eq("member_id", wanted).maybeSingle(),
     supabase.auth.getUser(),
   ]);
+  const [{ data: grants }, { data: businessRows }] = await Promise.all([
+    supabase.from("team_member_businesses").select("business_id").eq("member_id", wanted),
+    supabase.from("businesses").select("id, name").order("created_at"),
+  ]);
   if (!member || !isRole(member.role)) {
     return <p className="text-sm text-zinc-600">That team member wasn&apos;t found.</p>;
   }
@@ -105,6 +109,17 @@ export default async function AccessPage({ searchParams }: PageProps<"/dashboard
             <dd className="text-zinc-900">
               {member.email || "None — can't sign in"}
               {signIn.length > 0 && <span className="text-zinc-600"> · {signIn.join(" or ")}</span>}
+            </dd>
+          </div>
+          <div className="sm:col-span-2">
+            <dt className="text-xs font-semibold text-zinc-500">Businesses {self ? "you" : "they"} can open</dt>
+            <dd className="text-zinc-900">
+              {role === "admin"
+                ? "Every business (admins see them all)"
+                : (businessRows ?? [])
+                    .filter((b) => (grants ?? []).some((g) => g.business_id === b.id))
+                    .map((b) => b.name)
+                    .join(", ") || <span className="font-semibold text-amber-800">None yet — an admin gives access on the Team page</span>}
             </dd>
           </div>
           <div>

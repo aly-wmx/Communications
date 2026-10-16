@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSessionMember } from "@/lib/auth";
+import { memberIdsWithAccess } from "@/lib/access";
 import type { ActionResult } from "@/lib/action-result";
 import { acknowledge, escalate } from "@/lib/comms/contacts";
 import { serviceDb } from "@/lib/comms/ghl-store";
@@ -46,13 +47,19 @@ export async function escalateContact(input: unknown): Promise<ActionResult> {
   const sb = serviceDb();
   const team = await loadTeam(sb);
   const now = new Date();
-  const planned = planEscalation(planContext(contact, clientName, sla, now), planTeam(team), {
+  // Only people who can open this client's business can be escalated to.
+  const { data: client } = await sb.from("clients").select("business_id").eq("id", contact.clientId).maybeSingle();
+  const allowed = client ? await memberIdsWithAccess(sb, client.business_id) : null;
+  const reachable = planTeam(team).filter((m) => !allowed || allowed.has(m.id));
+  const planned = planEscalation(planContext(contact, clientName, sla, now), reachable, {
     raisedById: me.memberId,
     recipientIds: parsed.data.recipientIds,
     note: parsed.data.note,
     automatic: false,
   });
-  if (!planned.length) return { ok: false, error: "Nobody to notify — tick “Escalations” for someone on the Team page." };
+  if (!planned.length) {
+    return { ok: false, error: "Nobody to notify: tick “Escalations” for someone on the Team page who can open this business." };
+  }
 
   const next = escalate(contact, me.memberId, planned.map((p) => p.recipientId), parsed.data.note, team, now, "manual");
   // Read with their access above; escalations themselves are written by the server.

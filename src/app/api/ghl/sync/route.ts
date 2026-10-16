@@ -196,6 +196,15 @@ async function syncAccount(sb: Db, account: GhlAccount, check: boolean, deadline
       try {
         const users = await listGhlUsers(token, locationId);
         if (users.length) await sb.from("ghl_users").upsert(users.map((u) => ({ ...u, updated_at: startedAt.toISOString() })));
+        // Which sub-account (business) each GHL user is in. The Team page suggests portal access from this;
+        // it never grants access by itself. Users removed from the sub-account drop off the list.
+        if (users.length) {
+          const { error: locError } = await sb
+            .from("ghl_user_locations")
+            .upsert(users.map((u) => ({ ghl_user_id: u.id, business_id: businessId, seen_at: startedAt.toISOString() })));
+          if (locError) throw locError;
+          await sb.from("ghl_user_locations").delete().eq("business_id", businessId).lt("seen_at", startedAt.toISOString());
+        }
         // Linked teammates: fill in a missing phone or email from GHL (never overwrite what's set — emails are sign-ins).
         const { data: linked } = await sb.from("team_members").select("id, email, phone, ghl_user_id").not("ghl_user_id", "is", null);
         for (const t of linked ?? []) {

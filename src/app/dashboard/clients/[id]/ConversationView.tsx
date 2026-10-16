@@ -15,6 +15,7 @@ import { isStage } from "@/lib/stages";
 import { resolveGhlAccounts } from "@/lib/comms/ghl-accounts";
 import { formatStamp } from "@/lib/format-time";
 import { businessTimeZone } from "@/lib/time-zone";
+import { withAccess } from "@/lib/access";
 import { Phone } from "lucide-react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
@@ -158,6 +159,8 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
       : "";
 
   const tz = await businessTimeZone();
+  // People who can open this client's business: the only ones to assign, mention or escalate to here.
+  const reachable = await withAccess(supabase, client.business_id, team ?? []);
   const { data: ticketRows } = await supabase
     .from("tickets")
     .select("*")
@@ -241,7 +244,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
               hasPhone={Boolean(client.phone)}
               hasEmail={Boolean(client.email)}
               canSend={canSendMessages(me.role)}
-              team={(team ?? []).filter((t) => t.id !== me.memberId)}
+              team={reachable.filter((t) => t.id !== me.memberId)}
             />
           )}
         </section>
@@ -251,7 +254,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
           {/* What's waiting comes first: it's what people open a conversation to act on. */}
           <div id="item-actions" className="scroll-mt-4">
             {openContacts.length > 0 ? (
-              <ContactActions contacts={openContacts} team={team ?? []} meId={me?.memberId ?? ""} clientName={client.name} />
+              <ContactActions contacts={openContacts} team={reachable} meId={me?.memberId ?? ""} clientName={client.name} />
             ) : (
               <section className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 shadow-sm">
                 Nothing waiting on us for this client.
@@ -263,7 +266,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
             action={
               me && (
                 <NewTicket
-                  team={(team ?? []).map((t) => ({ id: t.id, name: t.name }))}
+                  team={reachable.map((t) => ({ id: t.id, name: t.name }))}
                   meId={me.memberId}
                   canAssignOthers={canAssignTickets(me.role)}
                   client={{ id: client.id, name: client.name }}
@@ -313,7 +316,7 @@ export async function ConversationView({ clientId: id, before, basePath }: { cli
               ownerId: client.owner_id ?? "",
               notes: client.notes,
             }}
-            team={team ?? []}
+            team={reachable}
             isAdmin={me?.role === "admin"}
           />
 
